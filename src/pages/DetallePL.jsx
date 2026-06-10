@@ -89,7 +89,7 @@ function EditorPallets({ pallets, onChange, productosDisponibles, kgPermitidos }
             </button>
           </div>
           <div className="pallet-table-wrap">
-            <table className="pallet-table">
+            <table className="pallet-table pallet-table--bold">
               <thead>
                 <tr>
                   <th>Producto</th><th>Cant.</th><th>Envase</th>
@@ -405,7 +405,7 @@ export default function DetallePL() {
             {pallets.map((pallet, pi) => (
               <div key={pi} className="pallet-readonly-block">
                 <p className="pallet-num">Pallet #{pallet.numero || pi + 1}</p>
-                <table className="pallet-table pallet-table--readonly">
+                <table className="pallet-table pallet-table--readonly pallet-table--bold">
                   <thead>
                     <tr><th>Producto</th><th>Cant.</th><th>Envase</th><th>Kg Netos</th><th>Kg Brutos</th><th>M³</th><th>Clasif. IMO</th><th>NU</th><th>Lote</th></tr>
                   </thead>
