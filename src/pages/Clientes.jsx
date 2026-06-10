@@ -126,4 +126,73 @@ export default function Clientes() {
           <p className="page-sub">{clientes.length} cliente{clientes.length !== 1 ? 's' : ''} registrados</p>
         </div>
         <button className="btn btn--primary" onClick={() => setModalNuevo(true)}>
-          <svg width="16" height="16" fill="none" stroke=
+          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+          </svg>
+          Nuevo cliente
+        </button>
+      </div>
+
+      <div className="busqueda-wrap" style={{ maxWidth: '100%' }}>
+        <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="busqueda-icon">
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+        <input
+          type="text"
+          placeholder="Buscar por nombre, RUT o país…"
+          className="busqueda-input"
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+          style={{ maxWidth: '100%', borderRadius: 'var(--radius-sm)' }}
+        />
+      </div>
+
+      {cargando ? (
+        <div className="empty-state"><div className="spinner" /></div>
+      ) : filtrados.length === 0 ? (
+        <div className="empty-state">
+          <svg width="40" height="40" fill="none" stroke="#CBD5E1" strokeWidth="1.5" viewBox="0 0 24 24">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+          <p>{busqueda ? 'No se encontraron clientes.' : 'Aún no hay clientes. Agrega el primero.'}</p>
+        </div>
+      ) : (
+        <div className="clientes-tabla-wrap">
+          <table className="clientes-tabla">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>RUT / ID Fiscal</th>
+                <th>País</th>
+                <th>Dirección</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map(c => (
+                <tr key={c.id}>
+                  <td className="cliente-nombre">{c.nombre}</td>
+                  <td className="cliente-rut">{c.rut || '—'}</td>
+                  <td>{c.pais || '—'}</td>
+                  <td className="cliente-dir">{c.direccion || '—'}</td>
+                  <td className="cliente-acciones">
+                    <button className="btn-icon" onClick={() => setEditando(c)} title="Editar">
+                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button className="btn-icon btn-icon--danger" onClick={() => setEliminando(c)} title="Eliminar">
+                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/>
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
