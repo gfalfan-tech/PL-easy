@@ -1116,3 +1116,47 @@ alle flex;
   .form-row { grid-template-columns: 1fr; }
   .page { padding: 16px; }
 }
+/* ─── Modal confirmación ────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+.modal-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px;
+  max-width: 380px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+.modal-icon { margin-bottom: 4px; }
+.modal-mensaje { font-size: .95rem; color: var(--text-primary); line-height: 1.5; }
+.modal-btns { display: flex; gap: 10px; width: 100%; justify-content: center; }
+
+/* ─── Indicador kg ──────────────────────────────────────────── */
+.kg-indicator {
+  padding: 12px 14px;
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kg-indicator--error { background: #FEF2F2; border-color: #FEE2E2; }
+.kg-indicator-bar { height: 6px; background: #E2E8F0; border-radius: 3px; overflow: hidden; }
+.kg-indicator-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
+.kg-indicator--error .kg-indicator-fill { background: var(--danger); }
+.kg-ok-text { font-size: .8rem; color: #166534; font-weight: 500; }
+.kg-error-text { font-size: .8rem; color: #991B1B; font-weight: 600; }
