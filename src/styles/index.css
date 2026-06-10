@@ -1220,3 +1220,74 @@ display: flex;
 .cliente-rut { font-size: .8rem; color: var(--text-secondary); font-family: monospace; }
 .cliente-dir { font-size: .8rem; color: var(--text-secondary); max-width: 260px; }
 .cliente-acciones { display: flex; gap: 4px; justify-content: flex-end; }
+/* ─── Tabla pallets más notoria ─────────────────────────────── */
+.pallet-table--bold th {
+  background: #1E3A5F;
+  color: white;
+  border-bottom: 2px solid #2E7BC4;
+}
+.pallet-table--bold td {
+  border-bottom: 1px solid #BFDBFE;
+  border-right: 1px solid #DBEAFE;
+}
+.pallet-table--bold tr:nth-child(even) td {
+  background: #EFF6FF;
+}
+.pallet-table--readonly.pallet-table--bold th {
+  background: #1E3A5F;
+  color: white;
+}
+.pallet-table--readonly.pallet-table--bold td {
+  border-bottom: 1px solid #BFDBFE;
+  border-right: 1px solid #DBEAFE;
+}
+.pallet-table--readonly.pallet-table--bold tr:nth-child(even) td {
+  background: #EFF6FF;
+}
+.pallet-table--readonly.pallet-table--bold tr:last-child td {
+  border-bottom: none;
+}
+
+/* ─── Historial ─────────────────────────────────────────────── */
+.historial-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.historial-desc {
+  font-size: .8rem;
+  color: var(--text-secondary);
+}
+.historial-tabla-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.historial-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .875rem;
+}
+.historial-tabla th {
+  background: #1E3A5F;
+  color: white;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  white-space: nowrap;
+}
+.historial-tabla td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #DBEAFE;
+  vertical-align: middle;
+}
+.historial-row { cursor: pointer; transition: background .1s; }
+.historial-row:hover td { background: #EFF6FF; }
+.historial-row:last-child td { border-bottom: none; }
+.historial-cliente { font-weight: 700; color: var(--text-primary); }
+.historial-nv { font-size: .8rem; color: var(--text-secondary); font-family: monospace; }
