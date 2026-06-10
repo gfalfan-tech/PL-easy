@@ -1,13 +1,11 @@
-import { db, storage } from './firebase'
+import { db } from './firebase'
 import {
-  collection, doc, addDoc, updateDoc, getDoc, getDocs,
+  collection, doc, addDoc, updateDoc, getDoc,
   query, orderBy, where, serverTimestamp, onSnapshot
 } from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 
 const COL = 'packingLists'
 
-// Estados posibles
 export const ESTADOS = {
   SOLICITUD: 'solicitud',
   PREPARACION: 'preparacion',
@@ -26,10 +24,9 @@ export const ESTADO_COLORS = {
   solicitud: '#6366F1',
   preparacion: '#F59E0B',
   revision: '#3B82F6',
-  despachado: '#00A878',
+  despachado: '#10B981',
 }
 
-// Crear solicitud (Admin o Facturación)
 export async function crearSolicitud(datos, usuarioId, usuarioNombre) {
   return addDoc(collection(db, COL), {
     ...datos,
@@ -45,7 +42,6 @@ export async function crearSolicitud(datos, usuarioId, usuarioNombre) {
   })
 }
 
-// Actualizar PL (bodega llena pallets y fotos)
 export async function actualizarPL(id, datos) {
   return updateDoc(doc(db, COL, id), {
     ...datos,
@@ -53,7 +49,6 @@ export async function actualizarPL(id, datos) {
   })
 }
 
-// Cambiar estado
 export async function cambiarEstado(id, nuevoEstado, extra = {}) {
   return updateDoc(doc(db, COL, id), {
     estado: nuevoEstado,
@@ -62,7 +57,6 @@ export async function cambiarEstado(id, nuevoEstado, extra = {}) {
   })
 }
 
-// Agregar comentario (aprobación / rechazo)
 export async function agregarComentario(id, comentario, usuarioNombre, tipo) {
   const snap = await getDoc(doc(db, COL, id))
   const actual = snap.data().comentarios || []
@@ -70,23 +64,45 @@ export async function agregarComentario(id, comentario, usuarioNombre, tipo) {
     comentarios: [...actual, {
       texto: comentario,
       autor: usuarioNombre,
-      tipo, // 'aprobacion' | 'rechazo' | 'nota'
+      tipo,
       fecha: new Date().toISOString(),
     }],
     actualizadoEn: serverTimestamp(),
   })
 }
 
-// Subir foto a Firebase Storage
-export async function subirFoto(plId, archivo, seccion) {
-  const ruta = `packingLists/${plId}/${seccion}/${Date.now()}_${archivo.name}`
-  const storageRef = ref(storage, ruta)
-  await uploadBytes(storageRef, archivo)
-  const url = await getDownloadURL(storageRef)
-  return url
+function archivoABase64(archivo) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX = 800
+        let w = img.width
+        let h = img.height
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+          else { w = Math.round(w * MAX / h); h = MAX }
+        }
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', 0.7))
+      }
+      img.onerror = reject
+      img.src = e.target.result
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(archivo)
+  })
 }
 
-// Agregar foto URL al PL
+export async function subirFoto(plId, archivo, seccion) {
+  const base64 = await archivoABase64(archivo)
+  return base64
+}
+
 export async function agregarFoto(plId, url, seccion) {
   const snap = await getDoc(doc(db, COL, plId))
   const actual = snap.data()[seccion] || []
@@ -96,13 +112,11 @@ export async function agregarFoto(plId, url, seccion) {
   })
 }
 
-// Obtener un PL
 export async function obtenerPL(id) {
   const snap = await getDoc(doc(db, COL, id))
   return snap.exists() ? { id: snap.id, ...snap.data() } : null
 }
 
-// Escuchar todos los PLs en tiempo real
 export function escucharPLs(callback, filtroEstado = null) {
   let q = query(collection(db, COL), orderBy('creadoEn', 'desc'))
   if (filtroEstado) {
