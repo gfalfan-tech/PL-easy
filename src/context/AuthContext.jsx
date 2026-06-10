@@ -21,7 +21,8 @@ export function AuthProvider({ children }) {
         const snap = await getDoc(doc(db, 'users', u.uid))
         if (snap.exists()) {
           const data = snap.data()
-          setPerfil({ ...data, rol: data.rol || data.Role })
+          // Normalizar: acepta 'rol', 'Role', o 'role'
+          setPerfil({ ...data, rol: data.rol || data.Role || data.role })
         }
       } else {
         setUser(null)
