@@ -3,35 +3,42 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { db } from '../services/firebase'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { actualizarPL } from '../services/packingListService'
+import ClienteAutocomplete from '../components/ClienteAutocomplete'
 
 function ProductoRow({ prod, idx, onChange, onRemove, puedeEliminar }) {
   return (
-    <div className="producto-row">
-      <div className="form-group" style={{ flex: 2 }}>
-        <label className="form-label">Nombre del producto</label>
-        <input className="form-input" value={prod.nombre} onChange={(e) => onChange(idx, 'nombre', e.target.value)} required />
+    <div className="producto-row-wrap">
+      <div className="producto-row">
+        <div className="form-group" style={{ flex: 2 }}>
+          <label className="form-label">Nombre del producto</label>
+          <input className="form-input" value={prod.nombre} onChange={e => onChange(idx, 'nombre', e.target.value)} required />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="form-label">Cantidad</label>
+          <input className="form-input" type="number" min="0" value={prod.cantidad} onChange={e => onChange(idx, 'cantidad', e.target.value)} required />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="form-label">Unidad</label>
+          <select className="form-input" value={prod.unidad} onChange={e => onChange(idx, 'unidad', e.target.value)}>
+            <option value="kg">kg</option>
+            <option value="tambores">tambores</option>
+            <option value="sacos">sacos</option>
+            <option value="pallets">pallets</option>
+            <option value="unidades">unidades</option>
+          </select>
+        </div>
+        {puedeEliminar && (
+          <button type="button" className="btn-icon btn-icon--danger" onClick={() => onRemove(idx)} style={{ alignSelf: 'flex-end', marginBottom: '2px' }}>
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/>
+            </svg>
+          </button>
+        )}
       </div>
-      <div className="form-group" style={{ flex: 1 }}>
-        <label className="form-label">Cantidad</label>
-        <input className="form-input" type="number" min="0" value={prod.cantidad} onChange={(e) => onChange(idx, 'cantidad', e.target.value)} required />
+      <div className="form-group" style={{ marginTop: '6px' }}>
+        <label className="form-label">Resolución Exenta <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(solo productos peligrosos)</span></label>
+        <input className="form-input" value={prod.resolExenta || ''} onChange={e => onChange(idx, 'resolExenta', e.target.value)} placeholder="Opcional" />
       </div>
-      <div className="form-group" style={{ flex: 1 }}>
-        <label className="form-label">Unidad</label>
-        <select className="form-input" value={prod.unidad} onChange={(e) => onChange(idx, 'unidad', e.target.value)}>
-          <option value="kg">kg</option>
-          <option value="tambores">tambores</option>
-          <option value="sacos">sacos</option>
-          <option value="pallets">pallets</option>
-          <option value="unidades">unidades</option>
-        </select>
-      </div>
-      {puedeEliminar && (
-        <button type="button" className="btn-icon btn-icon--danger" onClick={() => onRemove(idx)} style={{ alignSelf: 'flex-end', marginBottom: '2px' }}>
-          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/>
-          </svg>
-        </button>
-      )}
     </div>
   )
 }
@@ -45,7 +52,7 @@ export default function EditarSolicitud() {
   const [form, setForm] = useState(null)
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'packingLists', id), (snap) => {
+    const unsub = onSnapshot(doc(db, 'packingLists', id), snap => {
       if (snap.exists()) { setForm(snap.data()); setCargando(false) }
     })
     return unsub
@@ -53,24 +60,36 @@ export default function EditarSolicitud() {
 
   if (cargando || !form) return <div className="page"><div className="empty-state"><div className="spinner"/></div></div>
 
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSelectCliente = (c) => {
+    setForm(f => ({ ...f, cliente: c.nombre, rut: c.rut || '', direccion: c.direccion || '' }))
+  }
+
   const setProducto = (idx, campo, valor) => {
     const prods = [...form.productos]
     prods[idx] = { ...prods[idx], [campo]: valor }
-    setForm((f) => ({ ...f, productos: prods }))
+    setForm(f => ({ ...f, productos: prods }))
   }
-  const agregarProducto = () => setForm((f) => ({ ...f, productos: [...f.productos, { nombre: '', cantidad: '', unidad: 'kg' }] }))
-  const quitarProducto = (idx) => setForm((f) => ({ ...f, productos: f.productos.filter((_, i) => i !== idx) }))
+  const agregarProducto = () => setForm(f => ({ ...f, productos: [...f.productos, { nombre: '', cantidad: '', unidad: 'kg', resolExenta: '' }] }))
+  const quitarProducto = (idx) => setForm(f => ({ ...f, productos: f.productos.filter((_, i) => i !== idx) }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setGuardando(true)
     try {
-      await actualizarPL(id, { cliente: form.cliente, direccion: form.direccion, notaVenta: form.notaVenta, resolExenta: form.resolExenta, productos: form.productos, notas: form.notas })
+      await actualizarPL(id, {
+        cliente: form.cliente,
+        rut: form.rut,
+        direccion: form.direccion,
+        notaVenta: form.notaVenta,
+        productos: form.productos,
+        notas: form.notas,
+      })
       navigate(`/pl/${id}`)
-    } catch (err) {
-      setError('Error al guardar. Intenta de nuevo.')
+    } catch {
+      setError('Error al guardar.')
     } finally {
       setGuardando(false)
     }
@@ -91,25 +110,23 @@ export default function EditarSolicitud() {
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Cliente *</label>
-                <input className="form-input" value={form.cliente} onChange={(e) => setField('cliente', e.target.value)} required />
+                <ClienteAutocomplete value={form.cliente} onChange={v => setField('cliente', v)} onSelect={handleSelectCliente} />
               </div>
               <div className="form-group">
-                <label className="form-label">Dirección</label>
-                <input className="form-input" value={form.direccion || ''} onChange={(e) => setField('direccion', e.target.value)} />
+                <label className="form-label">RUT / ID Fiscal</label>
+                <input className="form-input" value={form.rut || ''} onChange={e => setField('rut', e.target.value)} placeholder="Se completa automático" />
               </div>
+            </div>
+            <div className="form-group" style={{ marginTop: '14px' }}>
+              <label className="form-label">Dirección</label>
+              <textarea className="form-input form-textarea" rows={2} value={form.direccion || ''} onChange={e => setField('direccion', e.target.value)} style={{ minHeight: '60px' }} />
             </div>
           </section>
           <section className="form-section">
             <h2 className="form-section-title"><span className="form-section-num">02</span>Datos del pedido</h2>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Nota de Venta *</label>
-                <input className="form-input" value={form.notaVenta} onChange={(e) => setField('notaVenta', e.target.value)} required />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Resolución Exenta</label>
-                <input className="form-input" value={form.resolExenta || ''} onChange={(e) => setField('resolExenta', e.target.value)} />
-              </div>
+            <div className="form-group">
+              <label className="form-label">Nota de Venta *</label>
+              <input className="form-input" value={form.notaVenta} onChange={e => setField('notaVenta', e.target.value)} required style={{ maxWidth: '320px' }} />
             </div>
           </section>
           <section className="form-section">
@@ -129,7 +146,7 @@ export default function EditarSolicitud() {
           <section className="form-section">
             <h2 className="form-section-title"><span className="form-section-num">04</span>Notas internas</h2>
             <div className="form-group">
-              <textarea className="form-input form-textarea" value={form.notas || ''} onChange={(e) => setField('notas', e.target.value)} rows={3} />
+              <textarea className="form-input form-textarea" value={form.notas || ''} onChange={e => setField('notas', e.target.value)} rows={3} />
             </div>
           </section>
           {error && <p className="form-error">{error}</p>}
