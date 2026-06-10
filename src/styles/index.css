@@ -1160,3 +1160,63 @@ display: flex;
 .kg-indicator--error .kg-indicator-fill { background: var(--danger); }
 .kg-ok-text { font-size: .8rem; color: #166534; font-weight: 500; }
 .kg-error-text { font-size: .8rem; color: #991B1B; font-weight: 600; }
+/* ─── Autocomplete ──────────────────────────────────────────── */
+.autocomplete-wrap { position: relative; }
+.autocomplete-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0; right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.autocomplete-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  cursor: pointer;
+  transition: background .1s;
+}
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover { background: #EFF6FF; }
+.autocomplete-nombre { font-size: .875rem; font-weight: 600; color: var(--text-primary); }
+.autocomplete-meta { display: flex; gap: 10px; font-size: .75rem; color: var(--text-secondary); }
+
+/* ─── Tabla clientes ────────────────────────────────────────── */
+.clientes-tabla-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.clientes-tabla { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.clientes-tabla th {
+  background: #F8FAFC;
+  padding: 10px 16px;
+  text-align: left;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.clientes-tabla td { padding: 12px 16px; border-bottom: 1px solid #F1F5F9; vertical-align: middle; }
+.clientes-tabla tr:last-child td { border-bottom: none; }
+.clientes-tabla tr:hover td { background: #FAFBFC; }
+.cliente-nombre { font-weight: 600; color: var(--text-primary); }
+.cliente-rut { font-size: .8rem; color: var(--text-secondary); font-family: monospace; }
+.cliente-dir { font-size: .8rem; color: var(--text-secondary); max-width: 260px; }
+.cliente-acciones { display: flex; gap: 4px; justify-content: flex-end; }
