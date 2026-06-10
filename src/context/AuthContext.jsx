@@ -18,8 +18,11 @@ export function AuthProvider({ children }) {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser(u)
-        const snap = await getDoc(doc(db, 'usuarios', u.uid))
-        if (snap.exists()) setPerfil(snap.data())
+        const snap = await getDoc(doc(db, 'users', u.uid))
+        if (snap.exists()) {
+          const data = snap.data()
+          setPerfil({ ...data, rol: data.rol || data.Role })
+        }
       } else {
         setUser(null)
         setPerfil(null)
