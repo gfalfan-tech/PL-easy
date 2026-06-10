@@ -27,13 +27,20 @@ function EditorPallets({ pallets, onChange, productosDisponibles, kgPermitidos }
     s + (p.items?.reduce((ss, i) => ss + (Number(i.kilosNetos) || 0), 0) || 0), 0)
   const superaKg = kgPermitidos > 0 && totalKgActual > kgPermitidos
 
-  const agregarPallet = () => onChange([...pallets, { numero: pallets.length + 1, items: [itemVacio(productosDisponibles[0]?.nombre || '')] }])
+  const agregarPallet = () => {
+    onChange(prev => [...prev, {
+      numero: prev.length + 1,
+      items: [itemVacio(productosDisponibles[0]?.nombre || '')]
+    }])
+  }
 
   const repetirUltimo = () => {
-    if (!pallets.length) return
-    const ultimo = JSON.parse(JSON.stringify(pallets[pallets.length - 1]))
-    ultimo.numero = pallets.length + 1
-    onChange([...pallets, ultimo])
+    onChange(prev => {
+      if (!prev.length) return prev
+      const ultimo = JSON.parse(JSON.stringify(prev[prev.length - 1]))
+      ultimo.numero = prev.length + 1
+      return [...prev, ultimo]
+    })
   }
 
   const agregarItem = (pi) => {
@@ -224,7 +231,7 @@ export default function DetallePL() {
       if (snap.exists()) {
         const data = { id: snap.id, ...snap.data() }
         setPl(data)
-        setPallets(data.pallets || [])
+        if (!modoEdicion) setPallets(data.pallets || [])
         setCargando(false)
       }
     })
@@ -339,7 +346,6 @@ export default function DetallePL() {
             <div><span className="info-label">Nota de Venta</span><span className="info-valor">NV {pl.notaVenta}</span></div>
           </div>
           {pl.direccion && <div><span className="info-label">Dirección</span><span className="info-valor">{pl.direccion}</span></div>}
-          {pl.resolExenta && <div><span className="info-label">Resolución Exenta</span><span className="info-valor">{pl.resolExenta}</span></div>}
           <div className="info-card-row">
             <div><span className="info-label">Creado por</span><span className="info-valor">{pl.creadoPor?.nombre}</span></div>
             <div><span className="info-label">Fecha</span><span className="info-valor">{formatFecha(pl.creadoEn)}</span></div>
@@ -350,7 +356,10 @@ export default function DetallePL() {
           <h3 className="info-card-title">Productos solicitados</h3>
           {pl.productos?.map((p, i) => (
             <div key={i} className="producto-chip">
-              <span className="producto-chip-nombre">{p.nombre}</span>
+              <div>
+                <span className="producto-chip-nombre">{p.nombre}</span>
+                {p.resolExenta && <span className="producto-chip-resol">Res. Exenta: {p.resolExenta}</span>}
+              </div>
               <span className="producto-chip-cant">{p.cantidad} {p.unidad}</span>
             </div>
           ))}
