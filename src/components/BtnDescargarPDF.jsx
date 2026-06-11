@@ -2,13 +2,27 @@ import { useState } from 'react'
 import { PDFDownloadLink } from '@react-pdf/renderer'
 import { PLDocument } from './PLDocument'
 
-// Convierte la imagen del logo a base64 para incluirla en el PDF
-async function logoABase64(url) {
+async function logoABase64ConFondoBlanco(url) {
   const resp = await fetch(url)
   const blob = await resp.blob()
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onloadend = () => resolve(reader.result)
+    reader.onloadend = () => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.width
+        canvas.height = img.height
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#FFFFFF'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0)
+        resolve(canvas.toDataURL('image/png'))
+      }
+      img.onerror = reject
+      img.src = reader.result
+    }
+    reader.onerror = reject
     reader.readAsDataURL(blob)
   })
 }
@@ -22,11 +36,11 @@ export default function BtnDescargarPDF({ pl }) {
     if (listo) return
     setPreparando(true)
     try {
-      const b64 = await logoABase64('/logo_qdc_.png')
+      const b64 = await logoABase64ConFondoBlanco('/logo_qdc_.png')
       setLogoB64(b64)
       setListo(true)
-    } catch {
-      console.error('No se pudo cargar el logo')
+    } catch (e) {
+      console.error('No se pudo cargar el logo', e)
       setListo(true)
     } finally {
       setPreparando(false)
