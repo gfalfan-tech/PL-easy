@@ -2,13 +2,22 @@ import { useState, useEffect } from 'react'
 import { escucharPLs, ESTADOS, ESTADO_LABELS } from '../services/packingListService'
 import CardPL from '../components/CardPL'
 
+const MENSAJES_VACIO = {
+  [ESTADOS.PREPARACION]: 'Sin exportaciones en preparación',
+  [ESTADOS.REVISION]: 'Sin exportaciones pendientes de revisión',
+  [ESTADOS.DESPACHADO]: 'Sin exportaciones despachadas',
+}
+
 function PaginaEstado({ estado }) {
   const [pls, setPls] = useState([])
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
     setCargando(true)
-    const unsub = escucharPLs((lista) => { setPls(lista); setCargando(false) }, estado)
+    const unsub = escucharPLs((lista) => {
+      setPls(lista)
+      setCargando(false)
+    }, estado)
     return unsub
   }, [estado])
 
@@ -22,10 +31,12 @@ function PaginaEstado({ estado }) {
         <div className="empty-state"><div className="spinner" /></div>
       ) : pls.length === 0 ? (
         <div className="empty-state">
-          <svg width="40" height="40" fill="none" stroke="#CBD5E1" strokeWidth="1.5" viewBox="0 0 24 24">
+          <svg width="48" height="48" fill="none" stroke="#BFDBFE" strokeWidth="1.5" viewBox="0 0 24 24">
             <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
           </svg>
-          <p>No hay packing lists en este estado.</p>
+          <p style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            {MENSAJES_VACIO[estado] || 'Sin registros'}
+          </p>
         </div>
       ) : (
         <div className="pl-grid">
