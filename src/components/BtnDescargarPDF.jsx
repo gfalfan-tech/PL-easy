@@ -1,29 +1,24 @@
 import { useState } from 'react'
 import { PDFDownloadLink } from '@react-pdf/renderer'
 import { PLDocument } from './PLDocument'
+import logoQdcUrl from '/logo_qdc_.png'
 
-async function logoABase64ConFondoBlanco(url) {
-  const resp = await fetch(url)
-  const blob = await resp.blob()
+function logoABase64ConFondoBlanco() {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = img.width
-        canvas.height = img.height
-        const ctx = canvas.getContext('2d')
-        ctx.fillStyle = '#FFFFFF'
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(img, 0, 0)
-        resolve(canvas.toDataURL('image/png'))
-      }
-      img.onerror = reject
-      img.src = reader.result
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#FFFFFF'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0)
+      resolve(canvas.toDataURL('image/png'))
     }
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
+    img.onerror = reject
+    img.src = logoQdcUrl
   })
 }
 
@@ -36,13 +31,12 @@ export default function BtnDescargarPDF({ pl }) {
     if (listo) return
     setPreparando(true)
     try {
-      const b64 = await logoABase64ConFondoBlanco('/logo_qdc_.png')
+      const b64 = await logoABase64ConFondoBlanco()
       setLogoB64(b64)
-      setListo(true)
     } catch (e) {
       console.error('No se pudo cargar el logo', e)
-      setListo(true)
     } finally {
+      setListo(true)
       setPreparando(false)
     }
   }
