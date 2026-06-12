@@ -1291,3 +1291,9 @@ display: flex;
 .historial-row:last-child td { border-bottom: none; }
 .historial-cliente { font-weight: 700; color: var(--text-primary); }
 .historial-nv { font-size: .8rem; color: var(--text-secondary); font-family: monospace; }
+/* ─── Datos de retiro ───────────────────────────────────────── */
+.retiro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
