@@ -1,15 +1,18 @@
 import { db } from './firebase'
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, query, orderBy
+  onSnapshot
 } from 'firebase/firestore'
 
 const COL_ENVASES = 'envases'
 
 export function escucharEnvases(callback) {
-  const q = query(collection(db, COL_ENVASES), orderBy('nombre'))
-  return onSnapshot(q, snap => {
-    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  // Sin orderBy para evitar índice compuesto — ordenamos en cliente
+  return onSnapshot(collection(db, COL_ENVASES), snap => {
+    const lista = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => a.nombre?.localeCompare(b.nombre))
+    callback(lista)
   })
 }
 
