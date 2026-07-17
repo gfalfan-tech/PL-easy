@@ -184,21 +184,7 @@ export function PLDocument({ pl }) {
             ))
           )}
 
-          {/* Totales por producto */}
-          {Object.entries(totalesPorProducto).map(([nombre, t], i) => (
-            <View key={i} style={s.tablaRowTotal}>
-              <Text style={[s.tablaTDTotal, s.colPallet]}>TOTAL</Text>
-              <Text style={[s.tablaTDTotal, s.colProducto]}>{nombre}</Text>
-              <Text style={[s.tablaTDTotal, s.colCant]}>{t.cantidad}</Text>
-              <Text style={[s.tablaTDTotal, s.colEnvase]}></Text>
-              <Text style={[s.tablaTDTotal, s.colKgN]}>{t.kgNetos.toLocaleString('es-CL')}</Text>
-              <Text style={[s.tablaTDTotal, s.colKgB]}>{t.kgBrutos.toLocaleString('es-CL')}</Text>
-              <Text style={[s.tablaTDTotal, s.colM3]}></Text>
-              <Text style={[s.tablaTDTotal, s.colImo]}></Text>
-              <Text style={[s.tablaTDTotal, s.colNu]}></Text>
-              <Text style={[s.tablaTDTotal, s.colLote]}></Text>
-            </View>
-          ))}
+
         </View>
 
         <FooterPDF />
