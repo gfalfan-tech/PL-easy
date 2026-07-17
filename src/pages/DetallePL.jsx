@@ -124,9 +124,9 @@ function EditorPallets({ pallets, onChange, productosDisponibles }) {
             <table className="pallet-table pallet-table--bold">
               <thead>
                 <tr>
-                  <th>Producto</th><th>Cant.</th><th>Envase</th>
-                  <th>Kg Netos *</th><th>Kg Brutos</th><th>M³</th>
-                  <th>Clasif. Ca/IMO</th><th>NU</th><th>Lote</th><th></th>
+                 <th>Producto</th><th>Cant.</th>
+<th>Kg Netos *</th><th>Kg Brutos</th><th>M³</th>
+<th>Clasif. Ca/IMO</th><th>NU</th><th>Lote</th><th>Envase</th><th></th>
                 </tr>
               </thead>
               <tbody>
