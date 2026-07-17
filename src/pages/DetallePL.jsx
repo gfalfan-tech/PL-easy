@@ -10,6 +10,7 @@ import BadgeEstado from '../components/BadgeEstado'
 import BtnDescargarPDF from '../components/BtnDescargarPDF'
 import { db } from '../services/firebase'
 import { onSnapshot, doc, deleteDoc } from 'firebase/firestore'
+import EnvaseAutocomplete from '../components/EnvaseAutocomplete'
 
 function formatFecha(ts) {
   if (!ts) return '—'
@@ -17,27 +18,54 @@ function formatFecha(ts) {
   return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'long', year: 'numeric' })
 }
 
+function formatFechaCorta(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+}
+
+// ——— Indicadores de kg por producto ———
+function IndicadoresKg({ pallets, productosDisponibles }) {
+  const productosConKg = productosDisponibles.filter(p => p.unidad === 'kg' && Number(p.cantidad) > 0)
+  if (!productosConKg.length) return null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+      {productosConKg.map((prod, i) => {
+        const permitido = Number(prod.cantidad)
+        const usado = pallets.reduce((s, pallet) =>
+          s + (pallet.items?.filter(it => it.nombre === prod.nombre)
+            .reduce((ss, it) => ss + (Number(it.kilosNetos) || 0), 0) || 0), 0)
+        const pct = Math.min((usado / permitido) * 100, 100)
+        const supera = usado > permitido
+        return (
+          <div key={i} className={`kg-indicator ${supera ? 'kg-indicator--error' : ''}`}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>{prod.nombre}</span>
+              <span className={supera ? 'kg-error-text' : 'kg-ok-text'}>
+                {supera ? `⚠ ${usado.toLocaleString()} / ${permitido.toLocaleString()} kg` : `${usado.toLocaleString()} / ${permitido.toLocaleString()} kg`}
+              </span>
+            </div>
+            <div className="kg-indicator-bar">
+              <div className="kg-indicator-fill" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ——— Editor de pallets ———
-function EditorPallets({ pallets, onChange, productosDisponibles, kgPermitidos }) {
+function EditorPallets({ pallets, onChange, productosDisponibles }) {
   const itemVacio = (nombre = '') => ({
-    nombre,
-    cantidad: '',
-    descripcionEnvase: '',
-    kilosNetos: '',
-    kilosBrutos: '',
-    mts3: '',
-    clasificaCaImo: '',
-    clasificaNu: '',
-    numeroLote: ''
+    nombre, cantidad: '', descripcionEnvase: '', kilosNetos: '',
+    kilosBrutos: '', mts3: '', clasificaCaImo: '', clasificaNu: '', numeroLote: ''
   })
 
-  const totalKgActual = pallets.reduce((s, p) =>
-    s + (p.items?.reduce((ss, i) => ss + (Number(i.kilosNetos) || 0), 0) || 0), 0)
-
-  const superaKg = kgPermitidos > 0 && totalKgActual > kgPermitidos
-
   const agregarPallet = () => {
-    onChange(prev => [... prev, {
+    onChange(prev => [...prev, {
       numero: prev.length + 1,
       items: [itemVacio(productosDisponibles[0]?.nombre || '')]
     }])
@@ -64,7 +92,10 @@ function EditorPallets({ pallets, onChange, productosDisponibles, kgPermitidos }
     onChange(p)
   }
 
-  const eliminarPallet = (pi) => onChange(pallets.filter((_, i) => i !== pi))
+  // Renumera automáticamente al eliminar
+  const eliminarPallet = (pi) => {
+    onChange(prev => prev.filter((_, i) => i !== pi).map((p, i) => ({ ...p, numero: i + 1 })))
+  }
 
   const eliminarItem = (pi, ii) => {
     const p = JSON.parse(JSON.stringify(pallets))
@@ -72,71 +103,59 @@ function EditorPallets({ pallets, onChange, productosDisponibles, kgPermitidos }
     onChange(p)
   }
 
+  // Validar campos obligatorios
+  const validarItem = (item) => item.nombre && Number(item.kilosNetos) > 0
+
   return (
     <div className="pallets-editor">
-      {/* Indicador kg */}
-      {kgPermitidos > 0 && (
-        <div className={`kg-indicator ${superaKg ? 'kg-indicator--error' : ''}`}>
-          <div className="kg-indicator-bar">
-            <div
-              className="kg-indicator-fill"
-              style={{ width: `${Math.min((totalKgActual / kgPermitidos) * 100, 100)}%` }}
-            />
-          </div>
-          <span className={superaKg ? 'kg-error-text' : 'kg-ok-text'}>
-            {superaKg
-              ? `⚠ Superaste el límite: ${totalKgActual.toLocaleString()} kg de ${kgPermitidos.toLocaleString()} kg permitidos`
-              : `${totalKgActual.toLocaleString()} / ${kgPermitidos.toLocaleString()} kg netos`}
-          </span>
-        </div>
-      )}
+      <IndicadoresKg pallets={pallets} productosDisponibles={productosDisponibles} />
 
       {pallets.map((pallet, pi) => (
         <div key={pi} className="pallet-block">
           <div className="pallet-header">
-            <span className="pallet-num">Pallet #{pallet.numero || pi + 1}</span>
+            <span className="pallet-num">Pallet #{pallet.numero}</span>
             <button type="button" className="btn-icon btn-icon--danger" onClick={() => eliminarPallet(pi)}>
               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/>
               </svg>
             </button>
           </div>
-
           <div className="pallet-table-wrap">
             <table className="pallet-table pallet-table--bold">
               <thead>
                 <tr>
                   <th>Producto</th><th>Cant.</th><th>Envase</th>
-                  <th>Kg Netos</th><th>Kg Brutos</th><th>M³</th>
+                  <th>Kg Netos *</th><th>Kg Brutos</th><th>M³</th>
                   <th>Clasif. Ca/IMO</th><th>NU</th><th>Lote</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {pallet.items.map((item, ii) => (
-                  <tr key={ii}>
+                  <tr key={ii} style={!validarItem(item) ? { background: '#FFF9EC' } : {}}>
                     <td>
-                      <select
-                        className="table-input"
-                        value={item.nombre}
-                        onChange={(e) => updateItem(pi, ii, 'nombre', e.target.value)}
-                      >
-                        {productosDisponibles.map((p, i) => (
-                          <option key={i} value={p.nombre}>{p.nombre}</option>
-                        ))}
+                      <select className="table-input" value={item.nombre} onChange={e => updateItem(pi, ii, 'nombre', e.target.value)}>
+                        {productosDisponibles.map((p, i) => <option key={i} value={p.nombre}>{p.nombre}</option>)}
                       </select>
                     </td>
-                    {['cantidad','descripcionEnvase','kilosNetos','kilosBrutos','mts3','clasificaCaImo','clasificaNu','numeroLote'].map((campo) => (
+                    {['cantidad','kilosNetos','kilosBrutos','mts3','clasificaCaImo','clasificaNu','numeroLote'].map(campo => (
                       <td key={campo}>
                         <input
                           className="table-input"
                           type={['cantidad','kilosNetos','kilosBrutos','mts3'].includes(campo) ? 'number' : 'text'}
                           value={item[campo]}
-                          onChange={(e) => updateItem(pi, ii, campo, e.target.value)}
+                          onChange={e => updateItem(pi, ii, campo, e.target.value)}
                           step={campo === 'mts3' ? '0.01' : '1'}
                           min="0"
+                          style={campo === 'kilosNetos' && !Number(item.kilosNetos) ? { borderColor: '#F59E0B' } : {}}
                         />
                       </td>
                     ))}
+                    <td key="descripcionEnvase" style={{ minWidth: '160px' }}>
+                      <EnvaseAutocomplete
+                        value={item.descripcionEnvase}
+                        onChange={v => updateItem(pi, ii, 'descripcionEnvase', v)}
+                      />
+                    </td>
                     <td>
                       <button type="button" className="btn-icon btn-icon--danger" onClick={() => eliminarItem(pi, ii)}>
                         <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -149,7 +168,7 @@ function EditorPallets({ pallets, onChange, productosDisponibles, kgPermitidos }
               </tbody>
             </table>
           </div>
-          <button type="button" className="btn btn--ghost btn--sm" style={{margin:'10px 14px 12px'}} onClick={() => agregarItem(pi)}>
+          <button type="button" className="btn btn--ghost btn--sm" style={{ margin: '10px 14px 12px' }} onClick={() => agregarItem(pi)}>
             + Agregar ítem al pallet
           </button>
         </div>
@@ -175,31 +194,44 @@ function EditorPallets({ pallets, onChange, productosDisponibles, kgPermitidos }
   )
 }
 
-// ——— Galería de fotos ———
+// ——— Galería de fotos (máx 3) ———
 function GaleriaFotos({ titulo, fotos, onAgregar, soloLectura }) {
   const fileRef = useRef()
   const [subiendo, setSubiendo] = useState(false)
+  const [error, setError] = useState('')
+  const MAX = 3
 
   const handleFile = async (e) => {
     const files = Array.from(e.target.files)
     if (!files.length) return
+    setError('')
+    const espacioDisponible = MAX - (fotos?.length || 0)
+    if (espacioDisponible <= 0) { setError(`Máximo ${MAX} fotos por sección.`); return }
     setSubiendo(true)
-    for (const f of files) await onAgregar(f)
+    try {
+      for (const f of files.slice(0, espacioDisponible)) await onAgregar(f)
+    } catch (err) {
+      if (err.message === 'MAX_FOTOS') setError(`Máximo ${MAX} fotos por sección.`)
+      else setError('Error al subir la foto.')
+    }
     setSubiendo(false)
     e.target.value = ''
   }
 
+  const puedeAgregar = !soloLectura && (fotos?.length || 0) < MAX
+
   return (
     <div className="galeria">
       <div className="galeria-header">
-        <h3 className="galeria-titulo">{titulo}</h3>
-        {!soloLectura && (
+        <h3 className="galeria-titulo">{titulo} <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>({fotos?.length || 0}/{MAX})</span></h3>
+        {puedeAgregar && (
           <button type="button" className="btn btn--ghost btn--sm" onClick={() => fileRef.current.click()} disabled={subiendo}>
             {subiendo ? 'Subiendo…' : '+ Agregar fotos'}
           </button>
         )}
         <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFile} />
       </div>
+      {error && <p style={{ fontSize: '.8rem', color: 'var(--danger)', marginBottom: '8px' }}>{error}</p>}
       {fotos?.length > 0 ? (
         <div className="galeria-grid">
           {fotos.map((f, i) => (
@@ -208,9 +240,7 @@ function GaleriaFotos({ titulo, fotos, onAgregar, soloLectura }) {
             </a>
           ))}
         </div>
-      ) : (
-        <p className="galeria-vacia">Sin fotos aún</p>
-      )}
+      ) : <p className="galeria-vacia">Sin fotos aún</p>}
     </div>
   )
 }
@@ -229,17 +259,15 @@ function DatosRetiro({ pl, puedeEditar, onGuardar }) {
   })
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  const tieneDatos = pl.guiaDespacho || pl.patenteCamion || pl.chofer
+  const tieneDatos = pl.guiaDespacho || pl.patenteCamion
 
   const guardar = async () => {
     if (!form.guiaDespacho.trim()) { setError('La guía de despacho es obligatoria.'); return }
     if (!form.patenteCamion.trim()) { setError('La patente del camión es obligatoria.'); return }
-    setError('')
-    setGuardando(true)
-    await onGuardar(form)
-    setGuardando(false)
-    setEditando(false)
+    setError(''); setGuardando(true)
+    try { await onGuardar(form); setEditando(false) }
+    catch { setError('Error al guardar.') }
+    finally { setGuardando(false) }
   }
 
   if (!editando && !tieneDatos && !puedeEditar) return null
@@ -250,11 +278,10 @@ function DatosRetiro({ pl, puedeEditar, onGuardar }) {
         <h2 className="section-title">Datos de retiro de carga</h2>
         {puedeEditar && !editando && (
           <button className="btn btn--outline btn--sm" onClick={() => setEditando(true)}>
-            {tieneDatos ? 'Editar datos' : 'Registrar retiro'}
+            {tieneDatos ? 'Editar' : 'Registrar retiro'}
           </button>
         )}
       </div>
-
       {editando ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div className="form-row">
@@ -278,37 +305,31 @@ function DatosRetiro({ pl, puedeEditar, onGuardar }) {
             </div>
           </div>
           <div className="form-group" style={{ maxWidth: '240px' }}>
-            <label className="form-label">RUT / DNI del Chofer</label>
+            <label className="form-label">RUT / DNI Chofer</label>
             <input className="form-input" value={form.documentoChofer} onChange={e => setField('documentoChofer', e.target.value)} placeholder="Ej: 12.345.678-9" />
           </div>
-
           {error && <p className="form-error">{error}</p>}
-
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
             <button className="btn btn--ghost btn--sm" onClick={() => { setEditando(false); setError('') }}>Cancelar</button>
-            <button className="btn btn--primary btn--sm" onClick={guardar} disabled={guardando}>
-              {guardando ? 'Guardando…' : 'Guardar datos'}
-            </button>
+            <button className="btn btn--primary btn--sm" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button>
           </div>
         </div>
       ) : tieneDatos ? (
         <div className="retiro-grid">
-          <div><span className="info-label">N° Guía de Despacho</span><span className="info-valor">{pl.guiaDespacho || '—'}</span></div>
-          <div><span className="info-label">Patente Camión</span><span className="info-valor">{pl.patenteCamion || '—'}</span></div>
+          {pl.guiaDespacho && <div><span className="info-label">N° Guía de Despacho</span><span className="info-valor">{pl.guiaDespacho}</span></div>}
+          {pl.patenteCamion && <div><span className="info-label">Patente Camión</span><span className="info-valor">{pl.patenteCamion}</span></div>}
           {pl.patenteRampla && <div><span className="info-label">Patente Rampla</span><span className="info-valor">{pl.patenteRampla}</span></div>}
           {pl.chofer && <div><span className="info-label">Chofer</span><span className="info-valor">{pl.chofer}</span></div>}
           {pl.documentoChofer && <div><span className="info-label">RUT / DNI Chofer</span><span className="info-valor">{pl.documentoChofer}</span></div>}
         </div>
       ) : (
-        <div className="empty-state-sm">
-          <p>Aún no se han registrado los datos de retiro.</p>
-        </div>
+        <div className="empty-state-sm"><p>Aún no se han registrado los datos de retiro.</p></div>
       )}
     </div>
   )
 }
 
-// ——— Modal de confirmación ———
+// ——— Modal confirmación ———
 function ModalConfirmar({ mensaje, onConfirmar, onCancelar }) {
   return (
     <div className="modal-overlay">
@@ -329,28 +350,79 @@ function ModalConfirmar({ mensaje, onConfirmar, onCancelar }) {
   )
 }
 
+// ——— Modal enviar a revisión ———
+function ModalRevision({ pallets, productos, onConfirmar, onCancelar }) {
+  const totalKgNetos = pallets.reduce((s, p) => s + (p.items?.reduce((ss, i) => ss + (Number(i.kilosNetos) || 0), 0) || 0), 0)
+  const totalKgBrutos = pallets.reduce((s, p) => s + (p.items?.reduce((ss, i) => ss + (Number(i.kilosBrutos) || 0), 0) || 0), 0)
+
+  // Validar campos obligatorios
+  const itemsInvalidos = pallets.flatMap(p => p.items || []).filter(i => !i.nombre || !Number(i.kilosNetos))
+  const hayErrores = itemsInvalidos.length > 0
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-card" style={{ maxWidth: '460px', alignItems: 'stretch', textAlign: 'left' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '4px' }}>Confirmar envío a revisión</h2>
+        <p style={{ fontSize: '.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>Revisa el resumen antes de enviar:</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+          <div className="info-card" style={{ padding: '12px' }}>
+            <span className="info-label">Total pallets</span>
+            <span className="info-valor" style={{ fontSize: '1.4rem', fontWeight: 800 }}>{pallets.length}</span>
+          </div>
+          <div className="info-card" style={{ padding: '12px' }}>
+            <span className="info-label">Kg netos totales</span>
+            <span className="info-valor" style={{ fontSize: '1.4rem', fontWeight: 800 }}>{totalKgNetos.toLocaleString('es-CL')}</span>
+          </div>
+          <div className="info-card" style={{ padding: '12px' }}>
+            <span className="info-label">Kg brutos totales</span>
+            <span className="info-valor" style={{ fontSize: '1.2rem', fontWeight: 700 }}>{totalKgBrutos.toLocaleString('es-CL')}</span>
+          </div>
+          <div className="info-card" style={{ padding: '12px' }}>
+            <span className="info-label">Productos</span>
+            <span className="info-valor" style={{ fontSize: '.85rem' }}>{productos?.map(p => p.nombre).join(', ')}</span>
+          </div>
+        </div>
+
+        {hayErrores && (
+          <div style={{ background: '#FFF9EC', border: '1px solid #FDE68A', borderRadius: 'var(--radius-sm)', padding: '10px 12px', marginBottom: '14px', fontSize: '.8rem', color: '#92400E' }}>
+            ⚠ Hay {itemsInvalidos.length} ítem(s) sin producto o sin kg netos. Puedes enviar de todas formas, pero se recomienda completarlos.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+          <button className="btn btn--ghost" onClick={onCancelar}>Cancelar</button>
+          <button className="btn btn--primary" onClick={onConfirmar}>Enviar a revisión</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ——— Página principal ———
 export default function DetallePL() {
   const { id } = useParams()
-  const { user, perfil } = useAuth()
+  const { perfil } = useAuth()
   const navigate = useNavigate()
 
   const [pl, setPl] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
+  const [errorGuardar, setErrorGuardar] = useState('')
   const [pallets, setPallets] = useState([])
   const [comentario, setComentario] = useState('')
   const [invoiceNum, setInvoiceNum] = useState('')
+  const [editandoInvoice, setEditandoInvoice] = useState(false)
   const [modoEdicion, setModoEdicion] = useState(false)
   const [confirmarEliminar, setConfirmarEliminar] = useState(false)
-  const [errorKg, setErrorKg] = useState('')
+  const [confirmarRevision, setConfirmarRevision] = useState(false)
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'packingLists', id), (snap) => {
+    const unsub = onSnapshot(doc(db, 'packingLists', id), snap => {
       if (snap.exists()) {
         const data = { id: snap.id, ...snap.data() }
         setPl(data)
-        setPallets(data.pallets || [])
+        if (!modoEdicion) setPallets(data.pallets || [])
         setCargando(false)
       }
     })
@@ -364,54 +436,70 @@ export default function DetallePL() {
   const esBodega = perfil?.rol === 'bodega' || esAdmin
   const esFacturacion = perfil?.rol === 'facturacion' || esAdmin
   const puedeEditarSolicitud = esAdmin || esFacturacion
-
   const puedeEditar = esBodega && (pl.estado === ESTADOS.PREPARACION || pl.estado === ESTADOS.SOLICITUD)
   const puedeEnviarRevision = esBodega && pl.estado === ESTADOS.PREPARACION
   const puedeAprobar = esFacturacion && pl.estado === ESTADOS.REVISION
   const puedeRechazar = esFacturacion && pl.estado === ESTADOS.REVISION
   const puedeFotoRetiro = pl.estado === ESTADOS.DESPACHADO
+  const enRevision = pl.estado === ESTADOS.REVISION
 
-  // Calcular kg permitidos desde productos de la solicitud
-  const kgPermitidos = pl.productos?.reduce((s, p) => {
-    if (p.unidad === 'kg') return s + (Number(p.cantidad) || 0)
-    return s
-  }, 0) || 0
+  // Validar kg por producto
+  const kgPermitidosPorProducto = {}
+  pl.productos?.forEach(p => {
+    if (p.unidad === 'kg') kgPermitidosPorProducto[p.nombre] = Number(p.cantidad) || 0
+  })
 
-  const totalKgActual = pallets.reduce((s, p) =>
-    s + (p.items?.reduce((ss, i) => ss + (Number(i.kilosNetos) || 0), 0) || 0), 0)
+  const superaAlgunKg = Object.keys(kgPermitidosPorProducto).some(nombre => {
+    const permitido = kgPermitidosPorProducto[nombre]
+    const usado = pallets.reduce((s, pallet) =>
+      s + (pallet.items?.filter(i => i.nombre === nombre)
+        .reduce((ss, i) => ss + (Number(i.kilosNetos) || 0), 0) || 0), 0)
+    return usado > permitido
+  })
 
   const guardarPallets = async () => {
-    if (kgPermitidos > 0 && totalKgActual > kgPermitidos) {
-      setErrorKg(`No puedes guardar: ${totalKgActual.toLocaleString()} kg supera el límite de ${kgPermitidos.toLocaleString()} kg netos.`)
-      return
-    }
-    setErrorKg('')
-    setGuardando(true)
-    await actualizarPL(id, { pallets })
-    setModoEdicion(false)
-    setGuardando(false)
+    if (superaAlgunKg) { setErrorGuardar('Hay productos que superan el kg permitido. Corrígelos antes de guardar.'); return }
+    setErrorGuardar(''); setGuardando(true)
+    try {
+      await actualizarPL(id, { pallets })
+      setModoEdicion(false)
+    } catch { setErrorGuardar('Error al guardar. Intenta de nuevo.') }
+    finally { setGuardando(false) }
   }
 
-  const enviarAPreparacion = async () => await cambiarEstado(id, ESTADOS.PREPARACION)
-  const enviarARevision = async () => await cambiarEstado(id, ESTADOS.REVISION)
+  const enviarAPreparacion = async () => {
+    await cambiarEstado(id, ESTADOS.PREPARACION, perfil.nombre)
+  }
+
+  const enviarARevision = async () => {
+    await cambiarEstado(id, ESTADOS.REVISION, perfil.nombre)
+    setConfirmarRevision(false)
+  }
 
   const aprobar = async () => {
-    if (!invoiceNum.trim()) { alert('Ingresa el número de Invoice para aprobar.'); return }
+    const numInvoice = invoiceNum.trim() || pl.invoiceNumero
+    if (!numInvoice) { alert('Ingresa el número de Invoice para aprobar.'); return }
     await agregarComentario(id, comentario || 'PL aprobado', perfil.nombre, 'aprobacion')
-    await cambiarEstado(id, ESTADOS.DESPACHADO, { invoiceNumero: invoiceNum })
+    await cambiarEstado(id, ESTADOS.DESPACHADO, perfil.nombre, { invoiceNumero: numInvoice })
     setComentario(''); setInvoiceNum('')
   }
 
   const rechazar = async () => {
     if (!comentario.trim()) { alert('Escribe un comentario indicando qué debe corregirse.'); return }
     await agregarComentario(id, comentario, perfil.nombre, 'rechazo')
-    await cambiarEstado(id, ESTADOS.PREPARACION)
+    await cambiarEstado(id, ESTADOS.PREPARACION, perfil.nombre)
     setComentario('')
   }
 
   const eliminar = async () => {
     await deleteDoc(doc(db, 'packingLists', id))
     navigate('/dashboard')
+  }
+
+  const guardarInvoice = async () => {
+    if (!invoiceNum.trim()) return
+    await actualizarPL(id, { invoiceNumero: invoiceNum })
+    setEditandoInvoice(false)
   }
 
   const handleFoto = async (archivo, seccion) => {
@@ -432,6 +520,14 @@ export default function DetallePL() {
           onCancelar={() => setConfirmarEliminar(false)}
         />
       )}
+      {confirmarRevision && (
+        <ModalRevision
+          pallets={pallets}
+          productos={pl.productos}
+          onConfirmar={enviarARevision}
+          onCancelar={() => setConfirmarRevision(false)}
+        />
+      )}
 
       {/* Header */}
       <div className="page-header">
@@ -443,8 +539,35 @@ export default function DetallePL() {
         </button>
         <div className="page-header-right">
           <BadgeEstado estado={pl.estado} />
-          {pl.invoiceNumero && <span className="invoice-badge">Invoice #{pl.invoiceNumero}</span>}
-          {pl.estado === ESTADOS.DESPACHADO && <BtnDescargarPDF pl={pl} />}
+
+          {/* Invoice editable en cualquier momento */}
+          {editandoInvoice ? (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input
+                className="form-input"
+                style={{ width: '120px', padding: '5px 8px', fontSize: '.8rem' }}
+                value={invoiceNum}
+                onChange={e => setInvoiceNum(e.target.value)}
+                placeholder="N° Invoice"
+                autoFocus
+              />
+              <button className="btn btn--primary btn--sm" onClick={guardarInvoice}>✓</button>
+              <button className="btn btn--ghost btn--sm" onClick={() => { setEditandoInvoice(false); setInvoiceNum('') }}>✕</button>
+            </div>
+          ) : (
+            <button
+              className={pl.invoiceNumero ? 'invoice-badge' : 'btn btn--ghost btn--sm'}
+              style={{ cursor: puedeEditarSolicitud ? 'pointer' : 'default' }}
+              onClick={() => { if (puedeEditarSolicitud) { setInvoiceNum(pl.invoiceNumero || ''); setEditandoInvoice(true) } }}
+              title={puedeEditarSolicitud ? 'Clic para editar Invoice' : ''}
+            >
+              {pl.invoiceNumero ? `Invoice #${pl.invoiceNumero} ✎` : puedeEditarSolicitud ? '+ Invoice' : ''}
+            </button>
+          )}
+
+          {/* PDF disponible desde que hay pallets */}
+          {pallets.length > 0 && <BtnDescargarPDF pl={pl} />}
+
           {puedeEditarSolicitud && (
             <>
               <button className="btn btn--outline btn--sm" onClick={() => navigate(`/editar-solicitud/${id}`)}>
@@ -466,15 +589,23 @@ export default function DetallePL() {
 
       <BarraProgreso estadoActual={pl.estado} />
 
-      {/* Info */}
+      {/* Aviso bloqueado en revisión */}
+      {enRevision && esBodega && !esFacturacion && (
+        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 'var(--radius-md)', padding: '12px 16px', fontSize: '.875rem', color: '#1E40AF' }}>
+          🔒 Este PL está en revisión por Facturación. No puedes editarlo hasta que sea aprobado o devuelto.
+        </div>
+      )}
+
+      {/* Info general */}
       <div className="detalle-grid">
         <div className="info-card">
           <div className="info-card-row">
             <div><span className="info-label">Cliente</span><span className="info-valor">{pl.cliente}</span></div>
             <div><span className="info-label">Nota de Venta</span><span className="info-valor">NV {pl.notaVenta}</span></div>
           </div>
+          {pl.ordenCompra && <div><span className="info-label">Orden de Compra</span><span className="info-valor">{pl.ordenCompra}</span></div>}
+          {pl.rut && <div><span className="info-label">RUT / ID Fiscal</span><span className="info-valor">{pl.rut}</span></div>}
           {pl.direccion && <div><span className="info-label">Dirección</span><span className="info-valor">{pl.direccion}</span></div>}
-          {pl.resolExenta && <div><span className="info-label">Resolución Exenta</span><span className="info-valor">{pl.resolExenta}</span></div>}
           <div className="info-card-row">
             <div><span className="info-label">Creado por</span><span className="info-valor">{pl.creadoPor?.nombre}</span></div>
             <div><span className="info-label">Fecha</span><span className="info-valor">{formatFecha(pl.creadoEn)}</span></div>
@@ -486,7 +617,10 @@ export default function DetallePL() {
           <h3 className="info-card-title">Productos solicitados</h3>
           {pl.productos?.map((p, i) => (
             <div key={i} className="producto-chip">
-              <span className="producto-chip-nombre">{p.nombre}</span>
+              <div>
+                <span className="producto-chip-nombre">{p.nombre}</span>
+                {p.resolExenta && <span className="producto-chip-resol">Res. Exenta: {p.resolExenta}</span>}
+              </div>
               <span className="producto-chip-cant">{p.cantidad} {p.unidad}</span>
             </div>
           ))}
@@ -507,35 +641,28 @@ export default function DetallePL() {
       <div className="section-card">
         <div className="section-card-header">
           <h2 className="section-title">Detalle de pallets</h2>
-          {puedeEditar && !modoEdicion && (
+          {puedeEditar && !modoEdicion && !enRevision && (
             <button className="btn btn--outline btn--sm" onClick={() => setModoEdicion(true)}>Editar pallets</button>
           )}
           {modoEdicion && (
             <div style={{ display: 'flex', gap: '8px', flexDirection: 'column', alignItems: 'flex-end' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn--ghost btn--sm" onClick={() => { setPallets(pl.pallets || []); setModoEdicion(false); setErrorKg('') }}>Cancelar</button>
+                <button className="btn btn--ghost btn--sm" onClick={() => { setPallets(pl.pallets || []); setModoEdicion(false); setErrorGuardar('') }}>Cancelar</button>
                 <button className="btn btn--primary btn--sm" onClick={guardarPallets} disabled={guardando}>
                   {guardando ? 'Guardando…' : 'Guardar pallets'}
                 </button>
               </div>
-              {errorKg && <p style={{ fontSize: '.8rem', color: '#EF4444', textAlign: 'right' }}>{errorKg}</p>}
+              {errorGuardar && <p style={{ fontSize: '.8rem', color: '#EF4444', textAlign: 'right' }}>{errorGuardar}</p>}
             </div>
           )}
         </div>
 
         {modoEdicion ? (
-          <EditorPallets
-            pallets={pallets}
-            onChange={setPallets}
-            productosDisponibles={pl.productos || []}
-            kgPermitidos={kgPermitidos}
-          />
+          <EditorPallets pallets={pallets} onChange={setPallets} productosDisponibles={pl.productos || []} />
         ) : pallets.length === 0 ? (
           <div className="empty-state-sm">
             <p>Sin pallets registrados aún.</p>
-            {puedeEditar && (
-              <button className="btn btn--outline btn--sm" onClick={() => setModoEdicion(true)}>Agregar pallets</button>
-            )}
+            {puedeEditar && !enRevision && <button className="btn btn--outline btn--sm" onClick={() => setModoEdicion(true)}>Agregar pallets</button>}
           </div>
         ) : (
           <div className="pallets-readonly">
@@ -544,20 +671,14 @@ export default function DetallePL() {
                 <p className="pallet-num">Pallet #{pallet.numero || pi + 1}</p>
                 <table className="pallet-table pallet-table--readonly pallet-table--bold">
                   <thead>
-                    <tr>
-                      <th>Producto</th><th>Cant.</th><th>Envase</th>
-                      <th>Kg Netos</th><th>Kg Brutos</th><th>M³</th>
-                      <th>Clasif. IMO</th><th>NU</th><th>Lote</th>
-                    </tr>
+                    <tr><th>Producto</th><th>Cant.</th><th>Envase</th><th>Kg Netos</th><th>Kg Brutos</th><th>M³</th><th>Clasif. IMO</th><th>NU</th><th>Lote</th></tr>
                   </thead>
                   <tbody>
                     {pallet.items?.map((item, ii) => (
                       <tr key={ii}>
-                        <td>{item.nombre}</td><td>{item.cantidad}</td>
-                        <td>{item.descripcionEnvase}</td><td>{item.kilosNetos}</td>
-                        <td>{item.kilosBrutos}</td><td>{item.mts3}</td>
-                        <td>{item.clasificaCaImo}</td><td>{item.clasificaNu}</td>
-                        <td>{item.numeroLote}</td>
+                        <td>{item.nombre}</td><td>{item.cantidad}</td><td>{item.descripcionEnvase}</td>
+                        <td>{item.kilosNetos}</td><td>{item.kilosBrutos}</td><td>{item.mts3}</td>
+                        <td>{item.clasificaCaImo}</td><td>{item.clasificaNu}</td><td>{item.numeroLote}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -570,40 +691,41 @@ export default function DetallePL() {
 
       {/* Fotos preparación */}
       <div className="section-card">
-        <GaleriaFotos
-          titulo="Fotos de preparación"
-          fotos={pl.fotosPreparacion}
-          soloLectura={!puedeEditar}
-          onAgregar={(f) => handleFoto(f, 'fotosPreparacion')}
-        />
+        <GaleriaFotos titulo="Fotos de preparación" fotos={pl.fotosPreparacion} soloLectura={!puedeEditar || enRevision} onAgregar={f => handleFoto(f, 'fotosPreparacion')} />
       </div>
 
       {/* Fotos retiro */}
       {(pl.estado === ESTADOS.DESPACHADO || pl.fotosRetiro?.length > 0) && (
         <div className="section-card">
-          <GaleriaFotos
-            titulo="Fotos de retiro de carga"
-            fotos={pl.fotosRetiro}
-            soloLectura={!puedeFotoRetiro}
-            onAgregar={(f) => handleFoto(f, 'fotosRetiro')}
-          />
+          <GaleriaFotos titulo="Fotos de retiro de carga" fotos={pl.fotosRetiro} soloLectura={!puedeFotoRetiro} onAgregar={f => handleFoto(f, 'fotosRetiro')} />
         </div>
       )}
 
-      {/* Datos de retiro */}
+      {/* Datos retiro */}
       {pl.estado === ESTADOS.DESPACHADO && (
-        <DatosRetiro
-          pl={pl}
-          puedeEditar={puedeEditarSolicitud}
-          onGuardar={(datos) => actualizarPL(id, datos)}
-        />
+        <DatosRetiro pl={pl} puedeEditar={puedeEditarSolicitud} onGuardar={datos => actualizarPL(id, datos)} />
       )}
 
+      {/* Historial de estados */}
+      {pl.historialEstados?.length > 0 && (
+        <div className="section-card">
+          <h2 className="section-title" style={{ marginBottom: '12px' }}>Historial de estados</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {pl.historialEstados.map((h, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.8rem', padding: '6px 0', borderBottom: i < pl.historialEstados.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <BadgeEstado estado={h.estado} size="sm" />
+                <span style={{ color: 'var(--text-secondary)' }}>por <strong>{h.autor}</strong></span>
+                <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>{formatFechaCorta(h.fecha)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Comentarios */}
       {pl.comentarios?.length > 0 && (
         <div className="section-card">
-          <h2 className="section-title">Historial de comentarios</h2>
+          <h2 className="section-title">Comentarios</h2>
           <div className="comentarios-lista">
             {pl.comentarios.map((c, i) => (
               <div key={i} className={`comentario comentario--${c.tipo}`}>
@@ -632,7 +754,7 @@ export default function DetallePL() {
         {puedeEnviarRevision && (
           <div className="accion-grupo">
             <p className="accion-desc">El PL está listo. Envíalo a revisión de Facturación.</p>
-            <button className="btn btn--primary" onClick={enviarARevision} disabled={pallets.length === 0}>
+            <button className="btn btn--primary" onClick={() => setConfirmarRevision(true)} disabled={pallets.length === 0}>
               Enviar a revisión
             </button>
           </div>
@@ -641,27 +763,17 @@ export default function DetallePL() {
           <div className="accion-grupo">
             <div className="form-group">
               <label className="form-label">Comentario</label>
-              <textarea
-                className="form-input form-textarea"
-                value={comentario}
-                onChange={(e) => setComentario(e.target.value)}
-                placeholder={puedeRechazar ? 'Indica qué debe corregirse (obligatorio para rechazar)…' : 'Comentario de aprobación (opcional)…'}
-                rows={2}
-              />
+              <textarea className="form-input form-textarea" value={comentario} onChange={e => setComentario(e.target.value)} placeholder={puedeRechazar ? 'Indica qué debe corregirse (obligatorio para rechazar)…' : 'Opcional…'} rows={2} />
             </div>
             {puedeAprobar && (
               <div className="form-group">
                 <label className="form-label">N° Invoice (obligatorio para aprobar)</label>
-                <input className="form-input" value={invoiceNum} onChange={(e) => setInvoiceNum(e.target.value)} placeholder="Ej: 244" />
+                <input className="form-input" value={invoiceNum} onChange={e => setInvoiceNum(e.target.value)} placeholder={pl.invoiceNumero || 'Ej: 244'} />
               </div>
             )}
             <div className="accion-btns">
-              {puedeRechazar && (
-                <button className="btn btn--danger" onClick={rechazar}>Rechazar — volver a preparación</button>
-              )}
-              {puedeAprobar && (
-                <button className="btn btn--success" onClick={aprobar}>Aprobar y despachar</button>
-              )}
+              {puedeRechazar && <button className="btn btn--danger" onClick={rechazar}>Rechazar — volver a preparación</button>}
+              {puedeAprobar && <button className="btn btn--success" onClick={aprobar}>Aprobar y despachar</button>}
             </div>
           </div>
         )}
