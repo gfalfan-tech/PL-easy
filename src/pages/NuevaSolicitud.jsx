@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { crearSolicitud } from '../services/packingListService'
@@ -42,14 +42,73 @@ function ProductoRow({ prod, idx, onChange, onRemove, puedeEliminar }) {
   )
 }
 
+// Convierte archivo a base64
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => resolve(e.target.result.split(',')[1])
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+// Llama a Claude API para extraer datos del PDF
+async function extraerDatosNV(base64PDF) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: base64PDF }
+          },
+          {
+            type: 'text',
+            text: `Extrae los siguientes datos de esta Nota de Venta y responde SOLO con un JSON válido, sin markdown ni texto adicional:
+{
+  "cliente": "nombre del cliente/empresa",
+  "rut": "RUT del cliente si aparece, sino string vacío",
+  "direccion": "dirección del cliente (DIRECCION o DESPACHO)",
+  "notaVenta": "número de la nota de venta (solo el número/código, ej: SOE-57)",
+  "ordenCompra": "número de orden de compra si aparece, sino string vacío",
+  "productos": [
+    {
+      "nombre": "nombre del producto",
+      "cantidad": "cantidad numérica como string",
+      "unidad": "kg, unidades, tambores, sacos o pallets según corresponda",
+      "resolExenta": "número de resolución exenta si aparece en el producto, sino string vacío"
+    }
+  ]
+}
+Mapea la unidad de medida al valor más cercano de: kg, unidades, tambores, sacos, pallets.`
+          }
+        ]
+      }]
+    })
+  })
+  const data = await response.json()
+  const text = data.content?.[0]?.text || ''
+  const clean = text.replace(/```json|```/g, '').trim()
+  return JSON.parse(clean)
+}
+
 export default function NuevaSolicitud() {
   const { user, perfil } = useAuth()
   const navigate = useNavigate()
+  const fileRef = useRef()
   const [cargando, setCargando] = useState(false)
+  const [extrayendo, setExtrayendo] = useState(false)
+  const [errorExtraccion, setErrorExtraccion] = useState('')
   const [error, setError] = useState('')
+  const [pdfNombre, setPdfNombre] = useState('')
 
   const [form, setForm] = useState({
-    cliente: '', rut: '', direccion: '', notaVenta: '',
+    cliente: '', rut: '', direccion: '', notaVenta: '', ordenCompra: '',
     productos: [{ nombre: '', cantidad: '', unidad: 'kg', resolExenta: '' }],
     notas: '',
   })
@@ -68,6 +127,40 @@ export default function NuevaSolicitud() {
 
   const agregarProducto = () => setForm(f => ({ ...f, productos: [...f.productos, { nombre: '', cantidad: '', unidad: 'kg', resolExenta: '' }] }))
   const quitarProducto = (idx) => setForm(f => ({ ...f, productos: f.productos.filter((_, i) => i !== idx) }))
+
+  const handlePDF = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setPdfNombre(file.name)
+    setErrorExtraccion('')
+    setExtrayendo(true)
+    try {
+      const base64 = await fileToBase64(file)
+      const datos = await extraerDatosNV(base64)
+      setForm(f => ({
+        ...f,
+        cliente: datos.cliente || f.cliente,
+        rut: datos.rut || f.rut,
+        direccion: datos.direccion || f.direccion,
+        notaVenta: datos.notaVenta || f.notaVenta,
+        ordenCompra: datos.ordenCompra || f.ordenCompra,
+        productos: datos.productos?.length
+          ? datos.productos.map(p => ({
+              nombre: p.nombre || '',
+              cantidad: p.cantidad || '',
+              unidad: p.unidad || 'kg',
+              resolExenta: p.resolExenta || ''
+            }))
+          : f.productos,
+      }))
+    } catch (err) {
+      console.error(err)
+      setErrorExtraccion('No se pudo leer el PDF. Completa los datos manualmente.')
+    } finally {
+      setExtrayendo(false)
+      e.target.value = ''
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -88,7 +181,43 @@ export default function NuevaSolicitud() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Nueva Solicitud</h1>
-          <p className="page-sub">Completa los datos para iniciar un Packing List</p>
+          <p className="page-sub">Completa los datos o sube la Nota de Venta para llenar automáticamente</p>
+        </div>
+        {/* Botón subir NV */}
+        <div>
+          <input ref={fileRef} type="file" accept="application/pdf" style={{ display: 'none' }} onChange={handlePDF} />
+          <button
+            type="button"
+            className="btn btn--outline"
+            onClick={() => fileRef.current.click()}
+            disabled={extrayendo}
+          >
+            {extrayendo ? (
+              <>
+                <div className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }} />
+                Leyendo PDF…
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                  <polyline points="14,2 14,8 20,8"/>
+                  <path d="M12 18v-6M9 15l3-3 3 3"/>
+                </svg>
+                Subir Nota de Venta (PDF)
+              </>
+            )}
+          </button>
+          {pdfNombre && !extrayendo && (
+            <p style={{ fontSize: '.75rem', color: 'var(--accent)', marginTop: '6px', textAlign: 'right' }}>
+              ✓ {pdfNombre} — datos cargados
+            </p>
+          )}
+          {errorExtraccion && (
+            <p style={{ fontSize: '.75rem', color: 'var(--danger)', marginTop: '6px', textAlign: 'right' }}>
+              {errorExtraccion}
+            </p>
+          )}
         </div>
       </div>
 
@@ -112,15 +241,21 @@ export default function NuevaSolicitud() {
             </div>
             <div className="form-group" style={{ marginTop: '14px' }}>
               <label className="form-label">Dirección</label>
-              <textarea className="form-input form-textarea" rows={2} value={form.direccion} onChange={e => setField('direccion', e.target.value)} placeholder="Se completa automático al elegir cliente" style={{ minHeight: '60px' }} />
+              <textarea className="form-input form-textarea" rows={2} value={form.direccion} onChange={e => setField('direccion', e.target.value)} placeholder="Se completa automático al elegir cliente o subir PDF" style={{ minHeight: '60px' }} />
             </div>
           </section>
 
           <section className="form-section">
             <h2 className="form-section-title"><span className="form-section-num">02</span>Datos del pedido</h2>
-            <div className="form-group">
-              <label className="form-label">Nota de Venta *</label>
-              <input className="form-input" value={form.notaVenta} onChange={e => setField('notaVenta', e.target.value)} placeholder="Ej: NV159091" required style={{ maxWidth: '320px' }} />
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Nota de Venta *</label>
+                <input className="form-input" value={form.notaVenta} onChange={e => setField('notaVenta', e.target.value)} placeholder="Ej: SOE-57" required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Orden de Compra</label>
+                <input className="form-input" value={form.ordenCompra || ''} onChange={e => setField('ordenCompra', e.target.value)} placeholder="Se completa automático desde PDF" />
+              </div>
             </div>
           </section>
 
@@ -149,7 +284,7 @@ export default function NuevaSolicitud() {
           {error && <p className="form-error">{error}</p>}
           <div className="form-actions">
             <button type="button" className="btn btn--ghost" onClick={() => navigate('/dashboard')}>Cancelar</button>
-            <button type="submit" className="btn btn--primary" disabled={cargando}>
+            <button type="submit" className="btn btn--primary" disabled={cargando || extrayendo}>
               {cargando ? 'Creando solicitud…' : 'Crear solicitud'}
             </button>
           </div>
