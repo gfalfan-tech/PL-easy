@@ -7,6 +7,7 @@ import NuevaSolicitud from './pages/NuevaSolicitud'
 import DetallePL from './pages/DetallePL'
 import EditarSolicitud from './pages/EditarSolicitud'
 import Clientes from './pages/Clientes'
+import Configuracion from './pages/Configuracion'
 import { Preparacion, Revision, Despachados } from './pages/PaginasEstado'
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/pl/:id" element={<DetallePL />} />
             <Route path="/editar-solicitud/:id" element={<EditarSolicitud />} />
             <Route path="/clientes" element={<Clientes />} />
+            <Route path="/configuracion" element={<Configuracion />} />
           </Route>
         </Routes>
       </BrowserRouter>
