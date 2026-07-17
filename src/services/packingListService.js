@@ -1,7 +1,7 @@
 import { db } from './firebase'
 import {
   collection, doc, addDoc, updateDoc, getDoc,
-  query, orderBy, where, serverTimestamp, onSnapshot
+  query, orderBy, serverTimestamp, onSnapshot
 } from 'firebase/firestore'
 
 const COL = 'packingLists'
@@ -36,6 +36,11 @@ export async function crearSolicitud(datos, usuarioId, usuarioNombre) {
     fotosPreparacion: [],
     fotosRetiro: [],
     comentarios: [],
+    historialEstados: [{
+      estado: ESTADOS.SOLICITUD,
+      autor: usuarioNombre,
+      fecha: new Date().toISOString(),
+    }],
     creadoPor: { id: usuarioId, nombre: usuarioNombre },
     creadoEn: serverTimestamp(),
     actualizadoEn: serverTimestamp(),
@@ -49,9 +54,16 @@ export async function actualizarPL(id, datos) {
   })
 }
 
-export async function cambiarEstado(id, nuevoEstado, extra = {}) {
+export async function cambiarEstado(id, nuevoEstado, usuarioNombre, extra = {}) {
+  const snap = await getDoc(doc(db, COL, id))
+  const historial = snap.data().historialEstados || []
   return updateDoc(doc(db, COL, id), {
     estado: nuevoEstado,
+    historialEstados: [...historial, {
+      estado: nuevoEstado,
+      autor: usuarioNombre,
+      fecha: new Date().toISOString(),
+    }],
     actualizadoEn: serverTimestamp(),
     ...extra,
   })
@@ -71,6 +83,7 @@ export async function agregarComentario(id, comentario, usuarioNombre, tipo) {
   })
 }
 
+// Comprime imagen y convierte a base64
 function archivoABase64(archivo) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -78,17 +91,15 @@ function archivoABase64(archivo) {
       const img = new Image()
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        const MAX = 800
-        let w = img.width
-        let h = img.height
+        const MAX = 600
+        let w = img.width, h = img.height
         if (w > MAX || h > MAX) {
           if (w > h) { h = Math.round(h * MAX / w); w = MAX }
           else { w = Math.round(w * MAX / h); h = MAX }
         }
-        canvas.width = w
-        canvas.height = h
+        canvas.width = w; canvas.height = h
         canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-        resolve(canvas.toDataURL('image/jpeg', 0.7))
+        resolve(canvas.toDataURL('image/jpeg', 0.6))
       }
       img.onerror = reject
       img.src = e.target.result
@@ -99,13 +110,16 @@ function archivoABase64(archivo) {
 }
 
 export async function subirFoto(plId, archivo, seccion) {
-  const base64 = await archivoABase64(archivo)
-  return base64
+  return archivoABase64(archivo)
 }
 
 export async function agregarFoto(plId, url, seccion) {
   const snap = await getDoc(doc(db, COL, plId))
   const actual = snap.data()[seccion] || []
+  // Máximo 3 fotos por sección
+  if (actual.length >= 3) {
+    throw new Error('MAX_FOTOS')
+  }
   return updateDoc(doc(db, COL, plId), {
     [seccion]: [...actual, { url, subidaEn: new Date().toISOString() }],
     actualizadoEn: serverTimestamp(),
@@ -117,13 +131,12 @@ export async function obtenerPL(id) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null
 }
 
+// Filtrado en cliente para evitar índice compuesto en Firestore
 export function escucharPLs(callback, filtroEstado = null) {
-  let q = query(collection(db, COL), orderBy('creadoEn', 'desc'))
-  if (filtroEstado) {
-    q = query(collection(db, COL), where('estado', '==', filtroEstado), orderBy('creadoEn', 'desc'))
-  }
+  const q = query(collection(db, COL), orderBy('creadoEn', 'desc'))
   return onSnapshot(q, (snap) => {
-    const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    let lista = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    if (filtroEstado) lista = lista.filter(pl => pl.estado === filtroEstado)
     callback(lista)
   })
 }
