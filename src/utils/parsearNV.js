@@ -1,47 +1,33 @@
 /**
  * Parsea texto extraído por PDF.js de una Nota de Venta QDC.
- * Basado en estructura real observada (líneas numeradas):
- * 0:  SEÑOR (ES)
- * 1-3: DIRECCION, GIRO, COMUNA
- * 4-7: ":" x4 (columna izquierda)
- * 8: FECHA PROMETIDA
- * ... más etiquetas y ":"
- * 16: ENABOLCO LTDA.      ← cliente (8vo ":" contando desde SEÑOR)
- * 17: AV.BLANCO...        ← dirección
- * 21: RUT
- * 22: ":"
- * 23: ""                  ← rut vacío
- * 24: N° : SOE-57
- * 40: ORDEN COMPRA
- * 42: 1417COO1
- * 66: P.TOTAL
- * 77: 1.428,00            ← precio total (antes de cada código)
- * 78: 4PQ03-125           ← código
- * 80: FOSFOCLEAN® (Kg).   ← nombre
- * 82: Kilo                ← unidad
- * 84: 600                 ← cantidad
+ * Verificado con SOE-51 (9 productos, nombres multilínea) y SOE-57 (3 productos, resolución exenta).
+ * 
+ * Estructura PDF.js:
+ * Líneas 0-15:  etiquetas columna izquierda (SEÑOR, DIRECCION, etc.) + 8 ":"
+ * Línea 16:     cliente (después del 8vo ":")
+ * Línea 17:     dirección
+ * Línea 24:     N° : SOE-XX  
+ * Línea 40:     ORDEN COMPRA → línea 42: valor
+ * Línea 66:     P.TOTAL (inicio de tabla)
+ * Por cada producto: [precio_total] → código → " " → nombre(1-3 líneas) → " " → unidad → " " → cantidad → " " → precio_unit
  */
 export function parsearNV(texto) {
   const lineas = texto.split('\n')
 
-  // ── Cliente ──────────────────────────────────────────────
-  // Después de SEÑOR (ES), contar 8 ":" para llegar al cliente
+  // ── Cliente (después del 8vo ":") ────────────────────────
   const idxSenor = lineas.findIndex(l => l.trim() === 'SEÑOR (ES)')
   let cliente = ''
   if (idxSenor >= 0) {
     let dp = 0
     for (let i = idxSenor + 1; i < lineas.length; i++) {
       if (lineas[i].trim() === ':') dp++
-      // El cliente está después del 8vo ":"
-      if (dp === 8 && lineas[i].trim() !== ':' && lineas[i].trim() !== '') {
-        cliente = lineas[i].trim()
-        break
+      if (dp === 8 && !esVacio(lineas[i]) && lineas[i].trim() !== ':') {
+        cliente = lineas[i].trim(); break
       }
     }
   }
 
-  // ── Dirección ────────────────────────────────────────────
-  // Línea inmediatamente después del cliente
+  // ── Dirección (línea después del cliente) ────────────────
   let direccion = ''
   if (cliente) {
     const idxCli = lineas.findIndex(l => l.trim() === cliente)
@@ -49,13 +35,12 @@ export function parsearNV(texto) {
   }
 
   // ── RUT ──────────────────────────────────────────────────
-  // Después de "RUT\n:\n" — si sigue vacío o siguiente campo, está vacío
   let rut = ''
   const idxRut = lineas.findIndex(l => l.trim() === 'RUT')
   if (idxRut >= 0) {
     for (let i = idxRut + 1; i < Math.min(idxRut + 5, lineas.length); i++) {
       const v = lineas[i].trim()
-      if (v === ':' || v === '') continue
+      if (v === ':' || esVacio(lineas[i])) continue
       if (/^[A-Z\s]+$/.test(v) || v.startsWith('N°')) break
       rut = v; break
     }
@@ -76,65 +61,10 @@ export function parsearNV(texto) {
   }
 
   // ── Productos ─────────────────────────────────────────────
-  // Estructura por producto en PDF.js:
-  // [precio_total] → código → " " → nombre → " " → [resolExenta] → unidad → " " → cantidad → " " → precio_unit
-  const productos = []
   const idxPTotal = lineas.findIndex(l => l.trim() === 'P.TOTAL')
-
-  if (idxPTotal >= 0) {
-    // Saltar encabezados hasta primer código
-    let i = idxPTotal + 1
-    while (i < lineas.length && !esCodigoProducto(lineas[i]) && !esPrecioTotal(lineas[i])) i++
-
-    while (i < lineas.length) {
-      // Saltar precio total que precede al código
-      if (esPrecioTotal(lineas[i])) { i++; continue }
-
-      if (!esCodigoProducto(lineas[i])) { i++; continue }
-
-      // Tenemos un código
-      i++ // saltar código
-      i = saltarEspacios(lineas, i)
-
-      const nombre = lineas[i]?.trim() || ''
-      if (!nombre) { i++; continue }
-      i = saltarEspacios(lineas, i + 1)
-
-      // Resolución exenta
-      let resolExenta = ''
-      let nombreFinal = nombre
-
-      if (/RES\.\s*$/.test(nombre)) {
-        nombreFinal = nombre.replace(/\s*RES\.\s*$/, '').trim()
-        const sig = lineas[i]?.trim() || ''
-        if (/EXENTA\s+No/i.test(sig)) {
-          const m = sig.match(/No\s*([\d]+)/)
-          if (m) {
-            resolExenta = m[1]; i++
-            const fecha = lineas[i]?.trim() || ''
-            if (/^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) {
-              resolExenta += ' ' + fecha; i++
-            }
-          }
-        }
-      }
-
-      // Unidad
-      const unidadRaw = lineas[i]?.trim() || ''
-      if (!esUnidad(unidadRaw)) { i++; continue }
-      const unidad = mapearUnidad(unidadRaw)
-      i = saltarEspacios(lineas, i + 1)
-
-      // Cantidad
-      const cantRaw = lineas[i]?.trim() || ''
-      const cantidad = esEntero(cantRaw) ? cantRaw.replace(/\./g, '') : ''
-      i++
-
-      if (nombreFinal && cantidad) {
-        productos.push({ nombre: nombreFinal, cantidad, unidad, resolExenta })
-      }
-    }
-  }
+  const productos = idxPTotal >= 0
+    ? parsearProductos(lineas, idxPTotal)
+    : []
 
   return {
     cliente,
@@ -148,27 +78,116 @@ export function parsearNV(texto) {
   }
 }
 
-function esCodigoProducto(l) {
-  return /^[0-9A-Z]{3,}[A-Z0-9\-]+$/.test((l || '').trim())
+function parsearProductos(lineas, idxPTotal) {
+  const STOP = new Set(['NETO', 'TOTAL', 'OBSERVACIONES'])
+  const productos = []
+  let i = idxPTotal + 1
+
+  // Saltar encabezados hasta primer precio o código
+  while (i < lineas.length && !esPrecioTotal(lineas[i]) && !esCodigo(lineas[i])) i++
+
+  while (i < lineas.length) {
+    const l = lineas[i].trim()
+
+    // Fin de tabla
+    if (STOP.has(l) || l.includes('I.V.A')) break
+
+    // Precio total antes del código — saltarlo
+    if (esPrecioTotal(l)) { i++; continue }
+
+    // Código de producto
+    if (!esCodigo(l)) { i++; continue }
+
+    i++ // saltar código
+    i = saltarVacios(lineas, i)
+
+    // Recoger nombre — puede ser 1, 2 o 3 líneas hasta llegar a unidad
+    const partesNombre = []
+    let resolExenta = ''
+
+    while (i < lineas.length) {
+      const l2 = lineas[i].trim()
+
+      // Llegamos a la unidad → fin del nombre
+      if (esUnidad(l2)) break
+
+      // Línea vacía/espacio → ver si la próxima no vacía es unidad
+      if (esVacio(lineas[i])) {
+        const j = saltarVacios(lineas, i)
+        if (j < lineas.length && esUnidad(lineas[j].trim())) { i = j; break }
+        i++; continue
+      }
+
+      // Resolución exenta en línea separada
+      if (/EXENTA\s+No/i.test(l2)) {
+        const m = l2.match(/No\s*(\d+)/)
+        if (m) {
+          resolExenta = m[1]; i++
+          if (i < lineas.length && /^\d{2}\/\d{2}\/\d{4}$/.test(lineas[i].trim())) {
+            resolExenta += ' ' + lineas[i].trim(); i++
+          }
+        }
+        continue
+      }
+
+      // Nombre termina en "RES." → la resolución viene en la siguiente línea
+      if (l2.endsWith('RES.')) {
+        partesNombre.push(l2.replace(/\s*RES\.\s*$/, '').trim())
+        i++; continue
+      }
+
+      partesNombre.push(l2)
+      i++
+    }
+
+    const nombre = partesNombre.join(' ').trim()
+
+    // Unidad
+    const unidadRaw = i < lineas.length ? lineas[i].trim() : ''
+    const unidad = mapearUnidad(unidadRaw)
+    i = saltarVacios(lineas, i + 1)
+
+    // Cantidad
+    const cantRaw = i < lineas.length ? lineas[i].trim() : ''
+    const cantidad = esEntero(cantRaw) ? cantRaw.replace(/\./g, '') : ''
+    i++
+
+    if (nombre && cantidad) {
+      productos.push({ nombre, cantidad, unidad, resolExenta })
+    }
+  }
+
+  return productos
+}
+
+function esCodigo(l) {
+  const s = (l || '').trim()
+  // Empieza con dígito, contiene letras Y números, mínimo 5 chars, solo alfanuméricos y guiones
+  return s.length >= 5 &&
+    /^[0-9][A-Z0-9\-]+$/.test(s) &&
+    /[A-Z]/.test(s) &&
+    /[0-9]/.test(s)
 }
 
 function esPrecioTotal(l) {
-  // Formato: "1.428,00" — tiene coma decimal y posiblemente punto de miles
-  return /^\d[\d.]*,\d{2}$/.test((l || '').trim())
+  return /^\d[\d.]*,\d{2,3}$/.test((l || '').trim())
 }
 
 function esUnidad(l) {
-  return /^(Kilo|Unidad|Litro|Saco|Tambor)/i.test((l || '').trim())
-}
-
-function saltarEspacios(lineas, desde) {
-  let i = desde
-  while (i < lineas.length && (lineas[i] === '' || lineas[i] === ' ' || lineas[i].trim() === '')) i++
-  return i
+  return /^(Kilo|Unidad|Litro|Saco|Tambor)\s*$/i.test((l || '').trim())
 }
 
 function esEntero(s) {
   return /^\d[\d.]*$/.test((s || '').trim()) && !(s || '').includes(',')
+}
+
+function esVacio(l) {
+  return (l || '').trim() === '' || l === ' '
+}
+
+function saltarVacios(lineas, i) {
+  while (i < lineas.length && esVacio(lineas[i])) i++
+  return i
 }
 
 function mapearUnidad(raw) {
