@@ -1,41 +1,48 @@
 /**
- * Parsea el texto extraído de una Nota de Venta QDC.
+ * Parsea texto extraído de una Nota de Venta QDC con PDF.js
  * 
- * Estructura del PDF:
- * - Datos del cliente van en la columna izquierda
- * - Datos del pedido (OC, fecha) van en la columna derecha intercalados
- * - Los productos (código + nombre) van en un bloque
- * - Las unidades y cantidades van DESPUÉS de OBSERVACIONES en columna separada
+ * Estructura del PDF (columnas mezcladas por el extractor):
+ * - Columna izquierda: etiquetas y valores del cliente
+ * - Columna derecha: fecha, OC, teléfono, etc.
+ * - Productos: código + nombre en bloque izquierdo
+ * - Unidades y cantidades: después de OBSERVACIONES
  */
 export function parsearNV(texto) {
   const t = texto || ''
 
   // ── Cliente ──────────────────────────────────────────────
-  const cliente = limpiar(match(t, /SEÑOR\s*\(ES\)\s*:\s*(.+?)(?:\nRUT|\nDIRECCION)/s))
+  // "SEÑOR (ES)\n\n:\n\nENABOLCO LTDA.\n\nRUT"
+  const cliente = limpiar(match(t, /SEÑOR\s*\(ES\)\s*\n+:\s*\n+(.+?)\n+RUT/s))
 
-  // ── RUT ── (aparece vacío en este formato pero por si acaso)
-  const rut = limpiar(match(t, /RUT\s*\n\s*:\s*([^\n:]+)/))
+  // ── RUT ── puede estar vacío
+  // "RUT\n\nDIRECCION\n\n:\n\n:\n\nAV..." → dos puntos seguidos = vacío
+  const rutMatch = t.match(/RUT\s*\n+(DIRECCION|\n+:\s*\n+:\s*\n+)/)
+  const rut = rutMatch ? '' : limpiar(match(t, /RUT\s*\n+:\s*\n+(.+?)\n+DIRECCION/s))
 
   // ── Dirección ────────────────────────────────────────────
-  const dir = limpiar(match(t, /DIRECCION\s*:\s*\n?\s*(.+?)(?:\nDESPACHO|\nCOMUNA|\nGIRO)/s))
-  const direccion = dir.replace(/^:\s*/, '')
+  // "DIRECCION\n\n:\n\n:\n\nAV.BLANCO..." o "DIRECCION\n\n:\n\nAV.BLANCO..."
+  const direccion = limpiar(
+    match(t, /DIRECCION\s*\n+:\s*\n+:\s*\n+(.+?)\n+DESPACHO/s) ||
+    match(t, /DIRECCION\s*\n+:\s*\n+(.+?)\n+DESPACHO/s)
+  )
 
   // ── Nota de Venta ─────────────────────────────────────────
+  // "N° : SOE-57"
   const notaVenta = limpiar(match(t, /N°\s*:\s*([^\n]+)/))
 
   // ── Orden de Compra ───────────────────────────────────────
-  // Aparece en la sección derecha, después de la fecha prometida
-  const ordenCompra = limpiar(match(t, /\d{2}\/\d{2}\/\d{4}\s*\n\s*([A-Z0-9]+)\s*\n/))
+  // Viene después de la fecha prometida "17/07/2026\n\n1417COO1"
+  const ordenCompra = limpiar(match(t, /\d{2}\/\d{2}\/\d{4}\s*\n+([A-Z0-9]+)\s*\n/))
 
-  // ── Productos ─────────────────────────────────────────────
-  // Los nombres/códigos van entre P.TOTAL y OBSERVACIONES
-  const bloqueNombres = match(t, /P\.TOTAL\s*\n\s*([\s\S]+?)OBSERVACIONES/s) || ''
+  // ── Bloque de productos (código + nombre) ─────────────────
+  // Entre "P.TOTAL\n\n" y "OBSERVACIONES"
+  const bloqueNombres = match(t, /P\.TOTAL\s*\n+([\s\S]+?)OBSERVACIONES/s) || ''
 
-  // Las unidades/cantidades van después de OBSERVACIONES (columna separada del PDF)
-  const bloqueUnidadesCants = match(t, /OBSERVACIONES[\s\S]*?\n\s*((?:Kilo|Unidad|Litro|Saco|Tambor)[\s\S]+?)(?:\s*NETO|\s*I\.V\.A)/si) || ''
+  // ── Bloque de unidades y cantidades ──────────────────────
+  // Después de OBSERVACIONES: "Kilo\n\nKilo\n\n600\n\n2.000\n\nUnidad\n\n240..."
+  const bloqueUD = match(t, /OBSERVACIONES[\s\S]*?\n+((?:Kilo|Unidad|Litro|Saco|Tambor)[\s\S]+?)(?:\s*NETO|\s*I\.V\.A)/si) || ''
 
-  // Resoluciones exentas van pegadas al nombre del producto
-  const productos = parsearProductos(bloqueNombres, bloqueUnidadesCants)
+  const productos = parsearProductos(bloqueNombres, bloqueUD)
 
   return {
     cliente,
@@ -67,57 +74,65 @@ function mapearUnidad(raw) {
   return 'unidades'
 }
 
-function parsearProductos(bloqueNombres, bloqueUnidades) {
-  // Extraer pares código-nombre del bloque izquierdo
-  const lineasNombres = bloqueNombres.split('\n').map(l => l.trim()).filter(Boolean)
+function parsearProductos(bloqueNombres, bloqueUD) {
+  const lineas = bloqueNombres.split('\n').map(l => l.trim()).filter(Boolean)
 
-  const items = [] // { nombre, resolExenta }
+  const items = []
   let i = 0
-  while (i < lineasNombres.length) {
-    const l = lineasNombres[i]
-    // Código: empieza con dígito o letra mayúscula seguido de alfanuméricos
+
+  while (i < lineas.length) {
+    const l = lineas[i]
+
+    // Código de producto: alfanumérico sin espacios, ej: 4PQ03-125, 1PE101203
     if (/^[0-9A-Z]{3,}[A-Z0-9\-]*$/.test(l)) {
-      let nombre = lineasNombres[i + 1] || ''
+      const nombreRaw = lineas[i + 1] || ''
       let resolExenta = ''
       let j = i + 2
 
-      // Puede haber resolución exenta pegada al nombre
-      while (j < lineasNombres.length) {
-        const sig = lineasNombres[j]
-        if (/RES\.?\s*EXENTA|EXENTA\s+No|ZN-400 RES\./i.test(sig) || /EXENTA\s+No/i.test(nombre)) {
-          // La resolución puede estar en la misma línea del nombre o en la siguiente
-          break
+      // Revisar si las siguientes líneas tienen resolución exenta
+      // Ej: "ZINC SPRAY ZN-400 RES.\nEXENTA No 2613323810\n25/06/2026"
+      // El nombre puede terminar en "RES." y las siguientes líneas tienen la resolución
+      let nombreFinal = nombreRaw
+
+      if (/RES\.\s*$/.test(nombreRaw)) {
+        // El nombre termina en RES. → separar y buscar número resolución
+        nombreFinal = nombreRaw.replace(/\s*RES\.\s*$/, '').trim()
+        // La siguiente línea tiene "EXENTA No XXXXXXXX"
+        if (j < lineas.length && /EXENTA\s+No/i.test(lineas[j])) {
+          const numMatch = lineas[j].match(/No\s*([\d]+)/)
+          if (numMatch) {
+            resolExenta = numMatch[1]
+            j++
+            // Siguiente línea puede tener fecha
+            if (j < lineas.length && /^\d{2}\/\d{2}\/\d{4}$/.test(lineas[j])) {
+              resolExenta += ' ' + lineas[j]
+              j++
+            }
+          }
         }
-        // Si empieza con otro código, terminamos
-        if (/^[0-9A-Z]{3,}[A-Z0-9\-]*$/.test(sig)) break
-        j++
+      } else if (j < lineas.length && /EXENTA\s+No/i.test(lineas[j])) {
+        // Resolución en línea separada sin que el nombre termine en RES.
+        const numMatch = lineas[j].match(/No\s*([\d]+)/)
+        if (numMatch) {
+          resolExenta = numMatch[1]
+          j++
+          if (j < lineas.length && /^\d{2}\/\d{2}\/\d{4}$/.test(lineas[j])) {
+            resolExenta += ' ' + lineas[j]
+            j++
+          }
+        }
       }
 
-      // Buscar resolución exenta asociada a este producto
-      const textoProducto = lineasNombres.slice(i, Math.min(i + 6, lineasNombres.length)).join(' ')
-      const mResol = textoProducto.match(/(?:RES\.?\s*EXENTA\s*No|EXENTA\s+No)\s*([\d]+)/)
-      const mFecha = textoProducto.match(/(\d{2}\/\d{2}\/\d{4})/)
-      if (mResol) {
-        resolExenta = mResol[1] + (mFecha ? ' ' + mFecha[1] : '')
-      }
-
-      // Limpiar nombre
-      nombre = nombre
-        .replace(/[®™©]\s*\([^)]*\)\.?/g, '')
-        .replace(/RES\.?\s*EXENTA.*/i, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-      if (nombre) items.push({ nombre, resolExenta })
+      items.push({ nombre: limpiar(nombreFinal), resolExenta })
       i = j
     } else {
       i++
     }
   }
 
-  // Extraer unidades y cantidades del bloque derecho
-  // Formato: Kilo\nKilo\n600\n2.000\nUnidad\n240
-  const lineasUD = bloqueUnidades.split('\n').map(l => l.trim()).filter(Boolean)
+  // Parsear unidades y cantidades del bloque derecho
+  // Formato: "Kilo\n\nKilo\n\n600\n\n2.000\n\nUnidad\n\n240\n\n2,38..."
+  const lineasUD = bloqueUD.split('\n').map(l => l.trim()).filter(Boolean)
 
   const unidades = []
   const cantidades = []
@@ -125,18 +140,14 @@ function parsearProductos(bloqueNombres, bloqueUnidades) {
   for (const l of lineasUD) {
     if (/^(Kilo|Unidad|Litro|Saco|Tambor)/i.test(l)) {
       unidades.push(mapearUnidad(l))
-    } else if (/^[\d.,]+$/.test(l) && !l.includes(',')) {
-      // Número sin coma decimal = cantidad (ej: 600, 2.000, 240)
+    } else if (/^\d[\d.]*$/.test(l)) {
+      // Número entero o con punto de miles (sin coma) = cantidad
+      // ej: 600, 2.000, 240
       cantidades.push(l.replace(/\./g, ''))
-    } else if (/^[\d.]+$/.test(l.replace(/,/g, ''))) {
-      // Podría ser precio unitario, lo ignoramos si ya tenemos suficientes cantidades
-      if (cantidades.length < items.length) {
-        cantidades.push(l.replace(/\./g, '').replace(',', '.'))
-      }
     }
+    // Ignorar precios (tienen coma decimal: 2,38 / 1.428,00)
   }
 
-  // Combinar todo
   return items.map((item, idx) => ({
     nombre: item.nombre,
     cantidad: cantidades[idx] || '',
