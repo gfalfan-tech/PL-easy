@@ -510,6 +510,7 @@ export default function DetallePL() {
   const totalKgNetos = pallets.reduce((s, p) => s + (p.items?.reduce((ss, i) => ss + (Number(i.kilosNetos) || 0), 0) || 0), 0)
   const totalKgBrutos = pallets.reduce((s, p) => s + (p.items?.reduce((ss, i) => ss + (Number(i.kilosBrutos) || 0), 0) || 0), 0)
   const totalMts3 = pallets.reduce((s, p) => s + (p.items?.reduce((ss, i) => ss + (Number(i.mts3) || 0), 0) || 0), 0)
+  const totalBultos = pallets.reduce((s, p) => s + (p.items?.reduce((ss, i) => ss + (Number(i.cantidad) || 0), 0) || 0), 0)
 
   return (
     <div className="page">
@@ -631,6 +632,7 @@ export default function DetallePL() {
       {pallets.length > 0 && (
         <div className="totales-bar">
           <div className="total-item"><span className="total-num">{pallets.length}</span><span className="total-label">pallets</span></div>
+          <div className="total-item"><span className="total-num">{totalBultos.toLocaleString('es-CL')}</span><span className="total-label">bultos</span></div>
           <div className="total-item"><span className="total-num">{totalKgNetos.toLocaleString('es-CL')}</span><span className="total-label">kg netos</span></div>
           <div className="total-item"><span className="total-num">{totalKgBrutos.toLocaleString('es-CL')}</span><span className="total-label">kg brutos</span></div>
           <div className="total-item"><span className="total-num">{totalMts3.toFixed(2)}</span><span className="total-label">m³</span></div>
