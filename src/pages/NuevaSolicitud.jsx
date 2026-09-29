@@ -15,7 +15,7 @@ function ProductoRow({ prod, idx, onChange, onRemove, puedeEliminar }) {
         </div>
         <div className="form-group" style={{ flex: 1 }}>
           <label className="form-label">Cantidad</label>
-          <input className="form-input" type="number" min="0" step="0.01" value={prod.cantidad} onChange={e => onChange(idx, 'cantidad', e.target.value)} required />
+          <input className="form-input" type="text" inputMode="decimal" pattern="^\d+([.,]\d{1,2})?$" value={prod.cantidad} onChange={e => { const v = e.target.value.replace(',', '.'); if (/^\d*\.?\d{0,2}$/.test(v) || v === '') onChange(idx, 'cantidad', v) }} placeholder="0.00" required />
         </div>
         <div className="form-group" style={{ flex: 1 }}>
           <label className="form-label">Unidad</label>
