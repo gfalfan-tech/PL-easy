@@ -144,7 +144,7 @@ function EditorPallets({ pallets, onChange, productosDisponibles }) {
                           type={['cantidad','kilosNetos','kilosBrutos','mts3'].includes(campo) ? 'number' : 'text'}
                           value={item[campo]}
                           onChange={e => updateItem(pi, ii, campo, e.target.value)}
-                          step={campo === 'mts3' ? '0.01' : '1'}
+                          step={campo === 'mts3' || campo === 'cantidad' ? '0.01' : '1'}
                           min="0"
                           style={campo === 'kilosNetos' && !Number(item.kilosNetos) ? { borderColor: '#F59E0B' } : {}}
                         />
