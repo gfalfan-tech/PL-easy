@@ -27,22 +27,31 @@ function formatFechaCorta(iso) {
 
 // ——— Indicadores de kg por producto ———
 function IndicadoresKg({ pallets, productosDisponibles }) {
-  const productosConKg = productosDisponibles.filter(p => p.unidad === 'kg' && Number(p.cantidad) > 0)
+  const productosConKg = productosDisponibles
+    .map((p, idx) => ({ ...p, lineaIdx: idx }))
+    .filter(p => p.unidad === 'kg' && Number(p.cantidad) > 0)
   if (!productosConKg.length) return null
+
+  // Etiqueta única: si hay dos líneas con el mismo nombre, añade " (L1)", " (L2)", etc.
+  const cuentaNombre = {}
+  productosDisponibles.forEach(p => { cuentaNombre[p.nombre] = (cuentaNombre[p.nombre] || 0) + 1 })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-      {productosConKg.map((prod, i) => {
+      {productosConKg.map((prod) => {
         const permitido = Number(prod.cantidad)
+        const label = cuentaNombre[prod.nombre] > 1
+          ? `${prod.nombre} (L${prod.lineaIdx + 1})`
+          : prod.nombre
         const usado = pallets.reduce((s, pallet) =>
-          s + (pallet.items?.filter(it => it.nombre === prod.nombre)
+          s + (pallet.items?.filter(it => it.lineaIdx === prod.lineaIdx)
             .reduce((ss, it) => ss + (Number(it.kilosNetos) || 0), 0) || 0), 0)
         const pct = Math.min((usado / permitido) * 100, 100)
         const supera = usado > permitido
         return (
-          <div key={i} className={`kg-indicator ${supera ? 'kg-indicator--error' : ''}`}>
+          <div key={prod.lineaIdx} className={`kg-indicator ${supera ? 'kg-indicator--error' : ''}`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>{prod.nombre}</span>
+              <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>{label}</span>
               <span className={supera ? 'kg-error-text' : 'kg-ok-text'}>
                 {supera ? `⚠ ${usado.toLocaleString()} / ${permitido.toLocaleString()} kg` : `${usado.toLocaleString()} / ${permitido.toLocaleString()} kg`}
               </span>
@@ -59,15 +68,29 @@ function IndicadoresKg({ pallets, productosDisponibles }) {
 
 // ——— Editor de pallets ———
 function EditorPallets({ pallets, onChange, productosDisponibles }) {
-  const itemVacio = (nombre = '') => ({
-    nombre, cantidad: '', descripcionEnvase: '', kilosNetos: '',
-    kilosBrutos: '', mts3: '', clasificaCaImo: '', clasificaNu: '', numeroLote: ''
-  })
+  // cuentaNombre para etiquetas únicas en el selector
+  const cuentaNombre = {}
+  productosDisponibles.forEach(p => { cuentaNombre[p.nombre] = (cuentaNombre[p.nombre] || 0) + 1 })
+
+  const labelProducto = (p, idx) =>
+    cuentaNombre[p.nombre] > 1
+      ? `${p.nombre} — ${Number(p.cantidad).toLocaleString('es-CL')} ${p.unidad} disponibles (L${idx + 1})`
+      : `${p.nombre} — ${Number(p.cantidad).toLocaleString('es-CL')} ${p.unidad} disponibles`
+
+  const itemVacio = (lineaIdx = 0) => {
+    const prod = productosDisponibles[lineaIdx] || productosDisponibles[0] || {}
+    return {
+      nombre: prod.nombre || '',
+      lineaIdx,
+      cantidad: '', descripcionEnvase: '', kilosNetos: '',
+      kilosBrutos: '', mts3: '', clasificaCaImo: '', clasificaNu: '', numeroLote: ''
+    }
+  }
 
   const agregarPallet = () => {
     onChange(prev => [...prev, {
       numero: prev.length + 1,
-      items: [itemVacio(productosDisponibles[0]?.nombre || '')]
+      items: [itemVacio(0)]
     }])
   }
 
@@ -82,7 +105,7 @@ function EditorPallets({ pallets, onChange, productosDisponibles }) {
 
   const agregarItem = (pi) => {
     const p = JSON.parse(JSON.stringify(pallets))
-    p[pi].items.push(itemVacio(productosDisponibles[0]?.nombre || ''))
+    p[pi].items.push(itemVacio(0))
     onChange(p)
   }
 
@@ -133,8 +156,21 @@ function EditorPallets({ pallets, onChange, productosDisponibles }) {
                 {pallet.items.map((item, ii) => (
                   <tr key={ii} style={!validarItem(item) ? { background: '#FFF9EC' } : {}}>
                     <td>
-                      <select className="table-input" value={item.nombre} onChange={e => updateItem(pi, ii, 'nombre', e.target.value)}>
-                        {productosDisponibles.map((p, i) => <option key={i} value={p.nombre}>{p.nombre}</option>)}
+                      <select
+                        className="table-input"
+                        value={item.lineaIdx ?? 0}
+                        onChange={e => {
+                          const idx = Number(e.target.value)
+                          const prod = productosDisponibles[idx] || {}
+                          const p = JSON.parse(JSON.stringify(pallets))
+                          p[pi].items[ii] = { ...p[pi].items[ii], nombre: prod.nombre || '', lineaIdx: idx }
+                          onChange(p)
+                        }}
+                        style={{ minWidth: '200px' }}
+                      >
+                        {productosDisponibles.map((p, i) => (
+                          <option key={i} value={i}>{labelProducto(p, i)}</option>
+                        ))}
                       </select>
                     </td>
                     {['cantidad','kilosNetos','kilosBrutos','mts3','clasificaCaImo','clasificaNu','numeroLote'].map(campo => (
@@ -443,16 +479,17 @@ export default function DetallePL() {
   const puedeFotoRetiro = pl.estado === ESTADOS.DESPACHADO
   const enRevision = pl.estado === ESTADOS.REVISION
 
-  // Validar kg por producto
-  const kgPermitidosPorProducto = {}
-  pl.productos?.forEach(p => {
-    if (p.unidad === 'kg') kgPermitidosPorProducto[p.nombre] = Number(p.cantidad) || 0
+  // Validar kg por línea de producto (usando lineaIdx para soportar mismo producto en 2 líneas)
+  const kgPermitidosPorLinea = {}
+  pl.productos?.forEach((p, idx) => {
+    if (p.unidad === 'kg') kgPermitidosPorLinea[idx] = Number(p.cantidad) || 0
   })
 
-  const superaAlgunKg = Object.keys(kgPermitidosPorProducto).some(nombre => {
-    const permitido = kgPermitidosPorProducto[nombre]
+  const superaAlgunKg = Object.keys(kgPermitidosPorLinea).some(idxStr => {
+    const idx = Number(idxStr)
+    const permitido = kgPermitidosPorLinea[idx]
     const usado = pallets.reduce((s, pallet) =>
-      s + (pallet.items?.filter(i => i.nombre === nombre)
+      s + (pallet.items?.filter(i => (i.lineaIdx ?? 0) === idx)
         .reduce((ss, i) => ss + (Number(i.kilosNetos) || 0), 0) || 0), 0)
     return usado > permitido
   })
